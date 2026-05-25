@@ -1,4 +1,9 @@
-import type CDP from "chrome-remote-interface";
+import type {
+  ConsoleMessage,
+  Page,
+  Request as PWRequest,
+  Response as PWResponse,
+} from "playwright";
 
 export interface ConsoleEntry {
   level: "log" | "info" | "warning" | "error" | "debug" | "trace";
@@ -20,78 +25,111 @@ export interface NetworkEntry {
 }
 
 let consoleBuf: ConsoleEntry[] = [];
-const networkMap = new Map<string, NetworkEntry>();
-let attachedClient: CDP.Client | null = null;
+const networkMap = new Map<PWRequest, NetworkEntry>();
+let attachedPage: Page | null = null;
+let nextRequestId = 1;
 
-export function attachBuffers(client: CDP.Client) {
-  if (attachedClient === client) return;
-  attachedClient = client;
+type Handler = (...args: unknown[]) => void;
+let listeners: Array<{ event: string; fn: Handler }> = [];
+let pendingSerializations: Promise<unknown>[] = [];
+
+export function attachBuffers(page: Page) {
+  if (attachedPage === page) return;
+  if (attachedPage) detachBuffers();
+  attachedPage = page;
   consoleBuf = [];
   networkMap.clear();
+  nextRequestId = 1;
 
-  client.Runtime.consoleAPICalled((p) => {
-    const text = p.args
-      .map((a) => {
-        if (a.type === "string") return String(a.value);
-        if (a.value !== undefined) {
-          try {
-            return typeof a.value === "string"
-              ? a.value
-              : JSON.stringify(a.value);
-          } catch {
-            return String(a.value);
-          }
+  const onConsole = (msg: ConsoleMessage) => {
+    const ts = Date.now();
+    const level = normalizeLevel(msg.type());
+    const args = msg.args();
+    if (args.length === 0) {
+      consoleBuf.push({ level, text: msg.text(), ts });
+      return;
+    }
+    const p = Promise.all(
+      args.map(async (a) => {
+        try {
+          const v = await a.jsonValue();
+          if (typeof v === "string") return v;
+          return JSON.stringify(v);
+        } catch {
+          return String(a);
         }
-        return a.description ?? "";
-      })
-      .join(" ");
+      }),
+    ).then(
+      (parts) => {
+        consoleBuf.push({ level, text: parts.join(" "), ts });
+      },
+      () => {
+        consoleBuf.push({ level, text: msg.text(), ts });
+      },
+    );
+    pendingSerializations.push(p);
+  };
+  page.on("console", onConsole);
+  listeners.push({ event: "console", fn: onConsole as unknown as Handler });
+
+  const onPageError = (err: Error) => {
     consoleBuf.push({
-      level: p.type as ConsoleEntry["level"],
-      text,
-      ts: p.timestamp,
+      level: "error",
+      text: err.message,
+      ts: Date.now(),
     });
-  });
+  };
+  page.on("pageerror", onPageError);
+  listeners.push({ event: "pageerror", fn: onPageError as unknown as Handler });
 
-  client.Runtime.exceptionThrown((p) => {
-    const ex = p.exceptionDetails;
-    const msg =
-      (ex.exception?.description as string | undefined) ??
-      ex.text ??
-      "exception";
-    consoleBuf.push({ level: "error", text: msg, ts: p.timestamp });
-  });
-
-  client.Network.requestWillBeSent((p) => {
-    networkMap.set(p.requestId, {
-      requestId: p.requestId,
-      url: p.request.url,
-      method: p.request.method,
-      type: p.type,
-      startedAt: p.timestamp,
+  const onRequest = (req: PWRequest) => {
+    networkMap.set(req, {
+      requestId: `req-${nextRequestId++}`,
+      url: req.url(),
+      method: req.method(),
+      type: req.resourceType(),
+      startedAt: Date.now(),
     });
-  });
+  };
+  page.on("request", onRequest);
+  listeners.push({ event: "request", fn: onRequest as unknown as Handler });
 
-  client.Network.responseReceived((p) => {
-    const e = networkMap.get(p.requestId);
-    if (e) {
-      e.status = p.response.status;
-      e.statusText = p.response.statusText;
-      e.endedAt = p.timestamp;
+  const onResponse = (res: PWResponse) => {
+    const req = res.request();
+    const entry = networkMap.get(req);
+    if (entry) {
+      entry.status = res.status();
+      entry.statusText = res.statusText();
+      entry.endedAt = Date.now();
     }
-  });
+  };
+  page.on("response", onResponse);
+  listeners.push({ event: "response", fn: onResponse as unknown as Handler });
 
-  client.Network.loadingFailed((p) => {
-    const e = networkMap.get(p.requestId);
-    if (e) {
-      e.failed = true;
-      e.failureText = p.errorText;
-      e.endedAt = p.timestamp;
+  const onRequestFailed = (req: PWRequest) => {
+    const entry = networkMap.get(req);
+    if (entry) {
+      entry.failed = true;
+      entry.failureText = req.failure()?.errorText ?? "request failed";
+      entry.endedAt = Date.now();
     }
+  };
+  page.on("requestfailed", onRequestFailed);
+  listeners.push({
+    event: "requestfailed",
+    fn: onRequestFailed as unknown as Handler,
   });
 }
 
 export function getConsole(): ConsoleEntry[] {
   return [...consoleBuf];
+}
+
+export async function flushConsole(): Promise<void> {
+  if (pendingSerializations.length === 0) return;
+  const snapshot = pendingSerializations;
+  pendingSerializations = [];
+  await Promise.all(snapshot).catch(() => undefined);
 }
 
 export function clearConsole() {
@@ -107,7 +145,34 @@ export function clearNetwork() {
 }
 
 export function detachBuffers() {
-  attachedClient = null;
+  if (attachedPage) {
+    for (const { event, fn } of listeners) {
+      try {
+        attachedPage.off(event as Parameters<Page["off"]>[0], fn);
+      } catch {
+        // ignore — page may already be closed
+      }
+    }
+  }
+  listeners = [];
+  attachedPage = null;
   consoleBuf = [];
   networkMap.clear();
+  pendingSerializations = [];
+}
+
+function normalizeLevel(type: string): ConsoleEntry["level"] {
+  switch (type) {
+    case "log":
+    case "info":
+    case "warning":
+    case "error":
+    case "debug":
+    case "trace":
+      return type;
+    case "warn":
+      return "warning";
+    default:
+      return "log";
+  }
 }

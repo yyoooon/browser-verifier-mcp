@@ -1,6 +1,11 @@
-import { ensureAttached } from "./client.js";
-import { evalInBrowser } from "./eval.js";
+import { ensureAttached } from "../runtime/client.js";
 import { waitForUrl } from "./wait.js";
+import { safeFill } from "../runtime/interaction/safeFill.js";
+import { safeClick } from "../runtime/interaction/safeClick.js";
+import { waitPageStable } from "../runtime/navigation/waitPageStable.js";
+
+const CLICK_TAG_ATTR = "data-vb-click-target";
+const CLICK_TAG_SELECTOR = `[${CLICK_TAG_ATTR}]`;
 
 export interface ClickResult {
   ok: boolean;
@@ -12,88 +17,135 @@ export interface ClickResult {
   elapsedMs: number;
 }
 
+function findAndTag(target: string): { hydrated: boolean; clickedText: string } | null {
+  const visible = (el: Element): boolean => {
+    const he = el as HTMLElement;
+    if (!he || !he.getClientRects) return false;
+    if (he.getClientRects().length === 0) return false;
+    const cs = getComputedStyle(he);
+    return cs.visibility !== "hidden" && cs.display !== "none";
+  };
+  const all = Array.from(
+    document.querySelectorAll(
+      "button, a, [role=button], [role=link], [role=tab], [role=menuitem], input[type=submit], input[type=button], label, [data-slot]",
+    ),
+  ).filter(visible);
+  let hit: Element | null =
+    all.find((el) => el.textContent && el.textContent.trim() === target) ??
+    null;
+  if (!hit) {
+    hit =
+      all.find(
+        (el) => el.textContent && el.textContent.trim().includes(target),
+      ) ?? null;
+  }
+  if (!hit) {
+    hit = all.find((el) => el.getAttribute("aria-label") === target) ?? null;
+  }
+  if (!hit) return null;
+
+  document
+    .querySelectorAll("[data-vb-click-target]")
+    .forEach((el) => el.removeAttribute("data-vb-click-target"));
+  hit.setAttribute("data-vb-click-target", "");
+
+  let hydrated = false;
+  for (const k of Object.keys(hit)) {
+    if (k.startsWith("__reactFiber") || k.startsWith("__reactProps")) {
+      hydrated = true;
+      break;
+    }
+  }
+
+  return {
+    hydrated,
+    clickedText: (hit.textContent || hit.getAttribute("aria-label") || "")
+      .trim()
+      .slice(0, 80),
+  };
+}
+
 export async function clickByText(
   text: string,
   hydrationTimeoutMs = 3000,
 ): Promise<ClickResult> {
   const t0 = Date.now();
-  const script = `
-    (async () => {
-      const target = ${JSON.stringify(text)};
-      const HYDRATION_TIMEOUT = ${hydrationTimeoutMs};
-      const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-      const visible = (el) => {
-        if (!el || !el.getClientRects) return false;
-        if (el.getClientRects().length === 0) return false;
-        const cs = getComputedStyle(el);
-        return cs.visibility !== "hidden" && cs.display !== "none";
-      };
-      const find = () => {
-        const all = Array.from(document.querySelectorAll(
-          "button, a, [role=button], [role=link], [role=tab], [role=menuitem], input[type=submit], input[type=button], label, [data-slot]"
-        )).filter(visible);
-        let hit = all.find((el) => el.textContent && el.textContent.trim() === target);
-        if (!hit) hit = all.find((el) => el.textContent && el.textContent.trim().includes(target));
-        if (!hit) hit = all.find((el) => el.getAttribute("aria-label") === target);
-        return hit;
-      };
-      const isHydrated = (el) => {
-        for (const k of Object.keys(el)) {
-          if (k.startsWith("__reactFiber") || k.startsWith("__reactProps")) return true;
-        }
-        return false;
-      };
-      const FIND_TIMEOUT = 500;
-      const start = Date.now();
-      let hit = find();
-      if (!hit) {
-        while (Date.now() - start < FIND_TIMEOUT) {
-          await sleep(50);
-          hit = find();
-          if (hit) break;
-        }
-      }
-      if (!hit) return { ok: false, matched: 0, waitedMs: Date.now() - start };
-      let hydrated = isHydrated(hit);
-      while (!hydrated && Date.now() - start < HYDRATION_TIMEOUT) {
-        await sleep(50);
-        hit = find() || hit;
-        hydrated = isHydrated(hit);
-      }
-      hit.scrollIntoView({ block: "center", inline: "center" });
-      hit.click();
+  let state;
+  try {
+    state = await ensureAttached();
+  } catch (e) {
+    return { ok: false, error: errMsg(e), elapsedMs: Date.now() - t0 };
+  }
+
+  let foundInfo: { hydrated: boolean; clickedText: string } | null = null;
+  let waitedMs = 0;
+
+  try {
+    const handle = await state.page.waitForFunction(findAndTag, text, {
+      timeout: hydrationTimeoutMs + 500,
+      polling: 50,
+    });
+    const v = (await handle.jsonValue()) as
+      | { hydrated: boolean; clickedText: string }
+      | null;
+    await handle.dispose();
+    waitedMs = Date.now() - t0;
+    if (!v) {
       return {
-        ok: true,
-        matched: 1,
-        hydrated,
-        waitedMs: Date.now() - start,
-        clickedText: (hit.textContent || hit.getAttribute("aria-label") || "").trim().slice(0, 80),
+        ok: false,
+        matched: 0,
+        waitedMs,
+        error: `no clickable element with text "${text}"`,
+        elapsedMs: Date.now() - t0,
       };
-    })()
-  `;
-  const r = await evalInBrowser(script, hydrationTimeoutMs + 2000);
-  if (!r.ok) return { ok: false, error: r.error, elapsedMs: Date.now() - t0 };
-  const v = r.value as {
-    ok: boolean;
-    matched?: number;
-    hydrated?: boolean;
-    waitedMs?: number;
-    clickedText?: string;
-  };
-  if (!v.ok) {
+    }
+    foundInfo = v;
+  } catch (e) {
     return {
       ok: false,
-      matched: v.matched ?? 0,
-      error: `no clickable element with text "${text}"`,
+      matched: 0,
+      waitedMs,
+      error: `no clickable element with text "${text}": ${errMsg(e)}`,
       elapsedMs: Date.now() - t0,
     };
   }
+
+  const locator = state.page.locator(CLICK_TAG_SELECTOR).first();
+  let lastError: string | undefined;
+
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const r = await safeClick(locator, {
+      timeoutMs: 3000,
+      stabilize: true,
+      stabilizeTimeoutMs: 3000,
+    });
+    if (r.ok) {
+      return {
+        ok: true,
+        matched: 1,
+        clickedText: foundInfo.clickedText,
+        hydrated: foundInfo.hydrated,
+        waitedMs,
+        elapsedMs: Date.now() - t0,
+      };
+    }
+    lastError = r.error;
+    if (attempt < 1) {
+      try {
+        await state.page.evaluate(findAndTag, text);
+      } catch {
+        break;
+      }
+    }
+  }
+
   return {
-    ok: true,
-    matched: v.matched,
-    clickedText: v.clickedText,
-    hydrated: v.hydrated,
-    waitedMs: v.waitedMs,
+    ok: false,
+    matched: 1,
+    clickedText: foundInfo.clickedText,
+    hydrated: foundInfo.hydrated,
+    waitedMs,
+    error: `click failed: ${lastError ?? "unknown"}`,
     elapsedMs: Date.now() - t0,
   };
 }
@@ -119,10 +171,27 @@ export async function clickAndWaitForUrl(
     expectedUrl.startsWith("**") ? expectedUrl : `**${expectedUrl}`,
     timeoutMs,
   );
+  if (!wait.ok) {
+    return {
+      ok: false,
+      finalUrl: wait.finalValue as string | undefined,
+      error: wait.error,
+      elapsedMs: Date.now() - t0,
+    };
+  }
+  try {
+    const state = await ensureAttached();
+    await waitPageStable(state.page, {
+      timeoutMs: 3000,
+      networkIdle: true,
+      animations: false,
+    });
+  } catch {
+    // stabilize is best-effort
+  }
   return {
-    ok: wait.ok,
+    ok: true,
     finalUrl: wait.finalValue as string | undefined,
-    error: wait.ok ? undefined : wait.error,
     elapsedMs: Date.now() - t0,
   };
 }
@@ -139,23 +208,23 @@ export async function fillReactInput(
   value: string,
 ): Promise<FillInputResult> {
   const t0 = Date.now();
-  const script = `
-    (() => {
-      const el = document.querySelector(${JSON.stringify(selector)});
-      if (!el) return { ok: false, error: "selector not found" };
-      const tag = el.tagName;
-      const proto = tag === "TEXTAREA" ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
-      const setter = Object.getOwnPropertyDescriptor(proto, "value").set;
-      setter.call(el, ${JSON.stringify(value)});
-      el.dispatchEvent(new Event("input", { bubbles: true }));
-      el.dispatchEvent(new Event("change", { bubbles: true }));
-      return { ok: true, finalValue: el.value };
-    })()
-  `;
-  const r = await evalInBrowser(script);
-  if (!r.ok) return { ok: false, error: r.error, elapsedMs: Date.now() - t0 };
-  const v = r.value as { ok: boolean; error?: string; finalValue?: string };
-  return { ...v, elapsedMs: Date.now() - t0 };
+  try {
+    const state = await ensureAttached();
+    const locator = state.page.locator(selector).first();
+    const result = await safeFill(locator, value);
+    return {
+      ok: result.ok,
+      finalValue: result.finalValue,
+      error: result.ok ? undefined : (result.error ?? "fill failed"),
+      elapsedMs: Date.now() - t0,
+    };
+  } catch (e) {
+    return {
+      ok: false,
+      error: errMsg(e),
+      elapsedMs: Date.now() - t0,
+    };
+  }
 }
 
 export interface NavigateResult {
@@ -171,20 +240,22 @@ export async function navigate(
 ): Promise<NavigateResult> {
   const t0 = Date.now();
   try {
-    const cdp = await ensureAttached();
-    await cdp.client.Page.navigate({ url });
-    const w = await waitForUrl("**", timeoutMs);
-    const r = await evalInBrowser("location.href", 1000);
+    const state = await ensureAttached();
+    await state.page.goto(url, { timeout: timeoutMs, waitUntil: "load" });
+    await waitPageStable(state.page, {
+      timeoutMs: 3000,
+      networkIdle: true,
+      animations: false,
+    });
     return {
-      ok: w.ok,
-      finalUrl: r.ok ? (r.value as string) : undefined,
-      error: w.ok ? undefined : w.error,
+      ok: true,
+      finalUrl: state.page.url(),
       elapsedMs: Date.now() - t0,
     };
   } catch (e) {
     return {
       ok: false,
-      error: e instanceof Error ? e.message : String(e),
+      error: errMsg(e),
       elapsedMs: Date.now() - t0,
     };
   }
@@ -193,24 +264,32 @@ export async function navigate(
 export async function reload(): Promise<NavigateResult> {
   const t0 = Date.now();
   try {
-    const cdp = await ensureAttached();
-    await cdp.client.Page.reload({});
-    const r = await evalInBrowser("location.href", 1000);
+    const state = await ensureAttached();
+    await state.page.reload({ waitUntil: "load" });
+    await waitPageStable(state.page, {
+      timeoutMs: 3000,
+      networkIdle: true,
+      animations: false,
+    });
     return {
       ok: true,
-      finalUrl: r.ok ? (r.value as string) : undefined,
+      finalUrl: state.page.url(),
       elapsedMs: Date.now() - t0,
     };
   } catch (e) {
     return {
       ok: false,
-      error: e instanceof Error ? e.message : String(e),
+      error: errMsg(e),
       elapsedMs: Date.now() - t0,
     };
   }
 }
 
 export async function activateTab(): Promise<void> {
-  const cdp = await ensureAttached();
-  await cdp.client.Page.bringToFront();
+  const state = await ensureAttached();
+  await state.page.bringToFront();
+}
+
+function errMsg(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
 }

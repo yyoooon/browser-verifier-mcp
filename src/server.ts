@@ -11,32 +11,6 @@ import {
 } from "./tools/setup.js";
 import { definition as evalDef, handler as evalHandler } from "./tools/eval.js";
 import {
-  definition as batchDef,
-  handler as batchHandler,
-} from "./tools/batch.js";
-import {
-  urlDefinition as waitUrlDef,
-  textDefinition as waitTextDef,
-  selectorDefinition as waitSelectorDef,
-  loadDefinition as waitLoadDef,
-  waitUrlHandler,
-  waitTextHandler,
-  waitSelectorHandler,
-  waitLoadHandler,
-} from "./tools/wait.js";
-import {
-  clickDefinition,
-  navigateDefinition,
-  fillInputDefinition,
-  navigateUrlDefinition,
-  reloadDefinition,
-  clickHandler,
-  navigateHandler,
-  fillInputHandler,
-  gotoHandler,
-  reloadHandler,
-} from "./tools/actions.js";
-import {
   consoleDefinition,
   networkDefinition,
   urlDefinition as getUrlDef,
@@ -58,6 +32,24 @@ import {
   definition as screenshotDef,
   handler as screenshotHandler,
 } from "./tools/screenshot.js";
+import {
+  definition as semanticDef,
+  handler as semanticHandler,
+} from "./tools/semantic.js";
+import {
+  definition as verifyDef,
+  handler as verifyHandler,
+} from "./tools/verify.js";
+import {
+  loadDefinition as tasksLoadDef,
+  listDefinition as tasksListDef,
+  runDefinition as tasksRunDef,
+  loadHandler as tasksLoadHandler,
+  listHandler as tasksListHandler,
+  runHandler as tasksRunHandler,
+} from "./tools/tasks.js";
+import { loadTasksFromFile } from "./runtime/tasks/loader.js";
+import { setTasks } from "./runtime/tasks/registry.js";
 
 const server = new Server(
   { name: "browser-verifier", version: "0.1.0" },
@@ -66,23 +58,18 @@ const server = new Server(
 
 const tools = [
   setupDef,
-  evalDef,
-  batchDef,
-  waitUrlDef,
-  waitTextDef,
-  waitSelectorDef,
-  waitLoadDef,
-  clickDefinition,
-  navigateDefinition,
-  fillInputDefinition,
-  navigateUrlDefinition,
-  reloadDefinition,
+  tabListDef,
+  sentinelDef,
   consoleDefinition,
   networkDefinition,
   getUrlDef,
   visibilityDefinition,
-  tabListDef,
-  sentinelDef,
+  semanticDef,
+  verifyDef,
+  tasksLoadDef,
+  tasksListDef,
+  tasksRunDef,
+  evalDef,
   screenshotDef,
 ];
 
@@ -97,49 +84,10 @@ server.setRequestHandler(
       switch (name) {
         case "browser_setup":
           return await setupHandler(args as { port?: number });
-        case "browser_eval":
-          return await evalHandler(
-            args as { script: string; timeoutMs?: number },
-          );
-        case "browser_batch":
-          return await batchHandler(args as Parameters<typeof batchHandler>[0]);
-        case "browser_wait_url":
-          return await waitUrlHandler(
-            args as { pattern: string; timeoutMs?: number },
-          );
-        case "browser_wait_text":
-          return await waitTextHandler(
-            args as { text: string; timeoutMs?: number },
-          );
-        case "browser_wait_selector":
-          return await waitSelectorHandler(
-            args as { selector: string; timeoutMs?: number },
-          );
-        case "browser_wait_load":
-          return await waitLoadHandler(
-            args as {
-              state?: "load" | "domcontentloaded" | "networkidle" | "hydrated";
-              timeoutMs?: number;
-            },
-          );
-        case "browser_click":
-          return await clickHandler(args as { text: string });
-        case "browser_navigate":
-          return await navigateHandler(
-            args as {
-              clickText: string;
-              expectedUrl: string;
-              timeoutMs?: number;
-            },
-          );
-        case "browser_fill_input":
-          return await fillInputHandler(
-            args as { selector: string; value: string },
-          );
-        case "browser_goto":
-          return await gotoHandler(args as { url: string; timeoutMs?: number });
-        case "browser_reload":
-          return await reloadHandler();
+        case "browser_tab_list":
+          return await tabListHandler();
+        case "browser_sentinel_save":
+          return await sentinelHandler(args as { projectRoot?: string });
         case "browser_check_console":
           return await consoleHandler(
             args as Parameters<typeof consoleHandler>[0],
@@ -152,10 +100,24 @@ server.setRequestHandler(
           return await urlHandler();
         case "browser_is_visible":
           return await visibilityHandler(args as { selector: string });
-        case "browser_tab_list":
-          return await tabListHandler();
-        case "browser_sentinel_save":
-          return await sentinelHandler(args as { projectRoot?: string });
+        case "browser_semantic_state":
+          return await semanticHandler();
+        case "browser_verify":
+          return await verifyHandler(
+            args as Parameters<typeof verifyHandler>[0],
+          );
+        case "browser_load_tasks":
+          return await tasksLoadHandler(args as { path: string });
+        case "browser_list_tasks":
+          return await tasksListHandler();
+        case "browser_run_task":
+          return await tasksRunHandler(
+            args as Parameters<typeof tasksRunHandler>[0],
+          );
+        case "browser_eval":
+          return await evalHandler(
+            args as { script: string; timeoutMs?: number },
+          );
         case "browser_screenshot":
           return await screenshotHandler(
             args as Parameters<typeof screenshotHandler>[0],
@@ -182,6 +144,25 @@ server.setRequestHandler(
     }
   },
 );
+
+const tasksPath = process.env.VERIFIER_TASKS_PATH;
+if (tasksPath) {
+  try {
+    const r = loadTasksFromFile(tasksPath);
+    setTasks(r.tasks, r.path);
+    const names = Object.keys(r.tasks);
+    console.error(
+      `[browser-verifier] loaded ${names.length} task(s) from ${r.path}` +
+        (r.warnings.length ? ` (warnings: ${r.warnings.join("; ")})` : ""),
+    );
+  } catch (e) {
+    console.error(
+      `[browser-verifier] failed to load tasks from ${tasksPath}: ${
+        e instanceof Error ? e.message : String(e)
+      }`,
+    );
+  }
+}
 
 const transport = new StdioServerTransport();
 await server.connect(transport);

@@ -1,8 +1,6 @@
-import { ensureAttached } from "./client.js";
-import { evalInBrowser } from "./eval.js";
+import { ensureAttached } from "../runtime/client.js";
 import { globMatch } from "../lib/glob.js";
 
-const POLL_MS = 100;
 const DEFAULT_TIMEOUT_MS = 5000;
 
 export interface WaitResult {
@@ -16,154 +14,133 @@ export async function waitForUrl(
   pattern: string,
   timeoutMs: number = DEFAULT_TIMEOUT_MS,
 ): Promise<WaitResult> {
-  return pollUntil(
-    async () => {
-      const r = await evalInBrowser("location.href", 1000);
-      return r.ok ? (r.value as string) : null;
-    },
-    (url) => url !== null && globMatch(pattern, url),
-    timeoutMs,
-    `URL did not match ${pattern}`,
-  );
+  const state = await ensureAttached();
+  const t0 = Date.now();
+  try {
+    await state.page.waitForURL(
+      (url) => globMatch(pattern, url.toString()),
+      { timeout: timeoutMs },
+    );
+    return {
+      ok: true,
+      elapsedMs: Date.now() - t0,
+      finalValue: state.page.url(),
+    };
+  } catch (e) {
+    return {
+      ok: false,
+      elapsedMs: Date.now() - t0,
+      finalValue: state.page.url(),
+      error: `URL did not match ${pattern}: ${errorMessage(e)}`,
+    };
+  }
 }
 
 export async function waitForText(
   text: string,
   timeoutMs: number = DEFAULT_TIMEOUT_MS,
 ): Promise<WaitResult> {
-  return pollUntil(
-    async () => {
-      const r = await evalInBrowser(
-        `document.body.innerText.includes(${JSON.stringify(text)})`,
-        1000,
-      );
-      return r.ok ? (r.value as boolean) : false;
-    },
-    (found) => found === true,
-    timeoutMs,
-    `text "${text}" did not appear`,
-  );
+  const state = await ensureAttached();
+  const t0 = Date.now();
+  try {
+    await state.page.waitForFunction(
+      (t) => document.body && document.body.innerText.includes(t),
+      text,
+      { timeout: timeoutMs, polling: 100 },
+    );
+    return {
+      ok: true,
+      elapsedMs: Date.now() - t0,
+      finalValue: true,
+    };
+  } catch (e) {
+    return {
+      ok: false,
+      elapsedMs: Date.now() - t0,
+      finalValue: false,
+      error: `text "${text}" did not appear: ${errorMessage(e)}`,
+    };
+  }
 }
 
 export async function waitForSelector(
   selector: string,
   timeoutMs: number = DEFAULT_TIMEOUT_MS,
 ): Promise<WaitResult> {
-  return pollUntil(
-    async () => {
-      const r = await evalInBrowser(
-        `!!document.querySelector(${JSON.stringify(selector)})`,
-        1000,
-      );
-      return r.ok ? (r.value as boolean) : false;
-    },
-    (found) => found === true,
-    timeoutMs,
-    `selector "${selector}" not found`,
-  );
+  const state = await ensureAttached();
+  const t0 = Date.now();
+  try {
+    await state.page
+      .locator(selector)
+      .first()
+      .waitFor({ state: "attached", timeout: timeoutMs });
+    return {
+      ok: true,
+      elapsedMs: Date.now() - t0,
+      finalValue: true,
+    };
+  } catch (e) {
+    return {
+      ok: false,
+      elapsedMs: Date.now() - t0,
+      finalValue: false,
+      error: `selector "${selector}" not found: ${errorMessage(e)}`,
+    };
+  }
 }
 
 export async function waitForLoad(
   state: "load" | "domcontentloaded" | "networkidle" | "hydrated" = "load",
   timeoutMs: number = DEFAULT_TIMEOUT_MS,
 ): Promise<WaitResult> {
+  const runtime = await ensureAttached();
   const t0 = Date.now();
-  const cdp = await ensureAttached();
 
-  if (state === "hydrated") {
-    return pollUntil(
-      async () => {
-        const r = await evalInBrowser(
-          `(() => {
-            const root = document.body;
-            if (!root) return false;
-            const stack = [root];
-            while (stack.length) {
-              const el = stack.pop();
-              for (const k of Object.keys(el)) {
-                if (k.startsWith("__reactFiber") || k.startsWith("__reactProps")) return true;
-              }
-              if (el.children) {
-                for (let i = 0; i < el.children.length && i < 50; i++) stack.push(el.children[i]);
-              }
-            }
-            return false;
-          })()`,
-          500,
-        );
-        return r.ok ? (r.value as boolean) : false;
-      },
-      (found) => found === true,
-      timeoutMs,
-      "React did not hydrate",
-    );
-  }
-
-  if (state === "load") {
-    return pollUntil(
-      async () => {
-        const r = await evalInBrowser("document.readyState", 500);
-        return r.ok ? (r.value as string) : null;
-      },
-      (s) => s === "complete",
-      timeoutMs,
-      "page did not finish loading",
-    );
-  }
-
-  if (state === "domcontentloaded") {
-    return pollUntil(
-      async () => {
-        const r = await evalInBrowser("document.readyState", 500);
-        return r.ok ? (r.value as string) : null;
-      },
-      (s) => s === "interactive" || s === "complete",
-      timeoutMs,
-      "DOM did not load",
-    );
-  }
-
-  // networkidle — no pending network for 500ms
-  let lastActivity = Date.now();
-  const unsub = cdp.client.Network.requestWillBeSent(() => {
-    lastActivity = Date.now();
-  });
   try {
-    return await pollUntil(
-      async () => Date.now() - lastActivity,
-      (idle) => idle >= 500,
-      timeoutMs,
-      "network did not become idle",
-    );
-  } finally {
-    unsub();
-    void t0;
-  }
-}
-
-async function pollUntil<T>(
-  read: () => Promise<T>,
-  pred: (v: T) => boolean,
-  timeoutMs: number,
-  failMsg: string,
-): Promise<WaitResult> {
-  const t0 = Date.now();
-  let lastValue: T | undefined;
-  while (Date.now() - t0 < timeoutMs) {
-    lastValue = await read();
-    if (pred(lastValue)) {
-      return { ok: true, elapsedMs: Date.now() - t0, finalValue: lastValue };
+    if (state === "hydrated") {
+      await runtime.page.waitForFunction(
+        () => {
+          const root = document.body;
+          if (!root) return false;
+          const stack: Element[] = [root];
+          while (stack.length) {
+            const el = stack.pop()!;
+            for (const k of Object.keys(el)) {
+              if (k.startsWith("__reactFiber") || k.startsWith("__reactProps"))
+                return true;
+            }
+            if (el.children) {
+              for (
+                let i = 0;
+                i < el.children.length && i < 50;
+                i++
+              )
+                stack.push(el.children[i]);
+            }
+          }
+          return false;
+        },
+        undefined,
+        { timeout: timeoutMs, polling: 100 },
+      );
+    } else {
+      await runtime.page.waitForLoadState(state, { timeout: timeoutMs });
     }
-    await sleep(POLL_MS);
+    return {
+      ok: true,
+      elapsedMs: Date.now() - t0,
+      finalValue: state,
+    };
+  } catch (e) {
+    return {
+      ok: false,
+      elapsedMs: Date.now() - t0,
+      error: `wait_load(${state}) failed: ${errorMessage(e)}`,
+    };
   }
-  return {
-    ok: false,
-    elapsedMs: Date.now() - t0,
-    finalValue: lastValue,
-    error: failMsg,
-  };
 }
 
-function sleep(ms: number) {
-  return new Promise<void>((r) => setTimeout(r, ms));
+function errorMessage(e: unknown): string {
+  if (e instanceof Error) return e.message;
+  return String(e);
 }

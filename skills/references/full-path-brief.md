@@ -35,17 +35,20 @@ git diff 본문 (최대 300줄):
    - "No Chrome target" → 사용자에게 "검증용 Chrome 9223으로 :PORT 탭 열어주세요" 안내 + FAIL 리턴.
    - 자체 브라우저 spawn 금지.
 
-4. [검증] 변경 surface에 맞는 MCP 툴 호출 (Category Selection 표 참고).
-   - Navigation 동반 → browser_batch ops:[{click}, {wait_url}, {get_url}]
-   - 같은 페이지 → browser_eval 또는 fill_input
-   - State 변경 → reload 후 검증 → browser_batch ops:[{eval}, {reload}, {wait_load}, {eval}]
+4. [검증] Category Selection 표 참고, 다음 우선순위:
+   - **반복 flow** (login/checkout/submit) → `browser_run_task({ name, args })`
+     - 등록된 task 확인: `browser_list_tasks()` (필요 시)
+     - 없으면 `.browser-verifier/tasks.json`에 추가 → `browser_load_tasks` → `browser_run_task`
+   - **다중 assertion** (route + cta + heading + errors) → `browser_verify({ checks: [...] })` 한 콜
+   - **페이지 상태 스냅샷** → `browser_semantic_state()`
+   - **표현 불가능한 raw 인스펙션** → `browser_eval` IIFE (computed style / classList / 객체 내부)
 
 5. [무결성]
-   - browser_check_console({ level: "error", clear: true })
-   - browser_check_network({ status: "errors" })  # API 변경 시
+   - `browser_check_console({ level: "error", clear: true })`
+   - `browser_check_network({ status: "errors" })`  # API 변경 시
    - CareHubBridge / 다른 워크트리 포트 에러는 무시 (자동 필터됨)
 
-6. [Sentinel] PASS / 정상 SKIP 시 browser_sentinel_save() — Stop hook 루프 차단.
+6. [Sentinel] PASS / 정상 SKIP 시 `browser_sentinel_save()` — Stop hook 루프 차단.
 
 7. [리턴] 200단어 이하, 형식:
 
@@ -66,10 +69,10 @@ git diff 본문 (최대 300줄):
 
 ⚠️ 금지:
 - computedStyle로 픽셀 단위 검증 (1-2px 비교는 본 스킬 영역 밖)
-- 전체 DOM snapshot dump
+- 전체 DOM snapshot dump (semantic_state로 대체)
 - 50줄 이상 결과 출력
 - browser_setup 없이 다른 tool 호출 (자동 에러)
-- IIFE 안에서 location.href / reload / router.push 트리거 (CDP race)
+- IIFE 안에서 location.href / reload / router.push 트리거 (SPA race) — 대신 task의 `goto`/`reload`/`navigate` 사용
 - Screenshot 매크로 외 픽셀 일치 판정
 ```
 

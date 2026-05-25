@@ -1,4 +1,4 @@
-import { ensureAttached } from "./client.js";
+import { ensureAttached } from "../runtime/client.js";
 
 export interface EvalSuccess {
   ok: true;
@@ -24,28 +24,16 @@ export async function evalInBrowser(
   const t0 = Date.now();
 
   try {
-    const result = await state.client.Runtime.evaluate({
-      expression: script,
-      returnByValue: true,
-      awaitPromise: true,
-      timeout: timeoutMs,
-      userGesture: true,
-    });
-
-    if (result.exceptionDetails) {
-      const ex = result.exceptionDetails;
-      const detail =
-        ex.exception?.description ?? ex.exception?.value ?? ex.text;
-      return {
-        ok: false,
-        error: typeof detail === "string" ? detail : JSON.stringify(detail),
-        elapsedMs: Date.now() - t0,
-      };
-    }
-
+    const value = await withTimeout(
+      state.page.evaluate<unknown, string>((s) => {
+        // eslint-disable-next-line no-eval
+        return eval(s);
+      }, script),
+      timeoutMs,
+    );
     return {
       ok: true,
-      value: result.result.value,
+      value,
       elapsedMs: Date.now() - t0,
     };
   } catch (e) {
@@ -55,4 +43,23 @@ export async function evalInBrowser(
       elapsedMs: Date.now() - t0,
     };
   }
+}
+
+function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new Error(`eval timeout after ${ms}ms`)),
+      ms,
+    );
+    p.then(
+      (v) => {
+        clearTimeout(timer);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(timer);
+        reject(e);
+      },
+    );
+  });
 }

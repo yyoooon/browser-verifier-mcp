@@ -5,6 +5,7 @@ import {
   clearConsole,
   getNetwork,
   clearNetwork,
+  flushConsole,
 } from "../cdp/buffers.js";
 import { evalInBrowser } from "../cdp/eval.js";
 import { ok, fail } from "../lib/result.js";
@@ -89,6 +90,7 @@ export async function consoleHandler(args: {
   includeNoise?: boolean;
 }) {
   await ensureAttached();
+  await flushConsole();
   const all = getConsole();
   const filtered = all.filter((e) => {
     if (!args.includeNoise && isNoise(e.text)) return false;

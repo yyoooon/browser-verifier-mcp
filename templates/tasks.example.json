@@ -1,0 +1,36 @@
+{
+  "openPartnerCreateModal": {
+    "description": "Navigate to /partners and open the partner-create modal, then verify it's open with the expected title and fields.",
+    "args": [],
+    "steps": [
+      { "op": "goto", "url": "http://localhost:3000/partners" },
+      { "op": "verify", "checks": [
+        { "type": "route", "expected": "**/partners" },
+        { "type": "primary_cta", "expectedText": "제휴업체 등록" }
+      ]},
+      { "op": "click", "text": "제휴업체 등록" },
+      { "op": "wait_selector", "selector": "[role=dialog]", "timeoutMs": 3000 },
+      { "op": "verify", "checks": [
+        { "type": "modal_open", "expectedTitle": "제휴업체 등록" },
+        { "type": "input_count", "min": 2 },
+        { "type": "no_errors" }
+      ]}
+    ]
+  },
+
+  "performLogin": {
+    "description": "Generic login template — adapt selectors and route to your app. Args: email, password.",
+    "args": ["email", "password"],
+    "steps": [
+      { "op": "goto", "url": "/login" },
+      { "op": "fill", "selector": "input[name=email]", "value": "{{email}}" },
+      { "op": "fill", "selector": "input[name=password]", "value": "{{password}}" },
+      { "op": "click", "text": "로그인" },
+      { "op": "wait_url", "pattern": "**/dashboard/**", "timeoutMs": 5000 },
+      { "op": "verify", "checks": [
+        { "type": "no_errors" },
+        { "type": "loaded", "timeoutMs": 3000 }
+      ]}
+    ]
+  }
+}

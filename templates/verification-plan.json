@@ -1,6 +1,22 @@
 {
   "tier": "light",
-  "navigation": false,
-  "console": true,
-  "network": true
+  "categories": ["1-a", "2", "4"],
+  "calls": [
+    {
+      "mode": "verify",
+      "checks": [
+        { "type": "route", "expected": "**/partners" },
+        { "type": "primary_cta", "expectedText": "제휴업체 등록" },
+        { "type": "no_errors" }
+      ]
+    },
+    {
+      "mode": "task",
+      "name": "openPartnerCreateModal",
+      "args": {}
+    },
+    { "mode": "check_console", "args": { "level": "error", "clear": true } },
+    { "mode": "check_network", "args": { "status": "errors" } },
+    { "mode": "sentinel" }
+  ]
 }
