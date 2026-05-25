@@ -31,12 +31,26 @@ export async function runTask(
   if (!task) {
     throw new Error(`task "${name}" not loaded. Use browser_load_tasks first.`);
   }
+  return executeSteps(name, task.steps, args);
+}
 
+export async function runInlineSteps(
+  steps: TaskOp[],
+  args: Record<string, unknown> = {},
+): Promise<TaskRunResult> {
+  return executeSteps("inline", steps, args);
+}
+
+async function executeSteps(
+  name: string,
+  steps: TaskOp[],
+  args: Record<string, unknown>,
+): Promise<TaskRunResult> {
   const t0 = Date.now();
   const records: StepRecord[] = [];
 
-  for (let i = 0; i < task.steps.length; i++) {
-    const step = substituteArgs(task.steps[i], args);
+  for (let i = 0; i < steps.length; i++) {
+    const step = substituteArgs(steps[i], args);
     const sT0 = Date.now();
     try {
       const result = await executeStep(step);

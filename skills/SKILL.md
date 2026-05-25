@@ -47,7 +47,7 @@ Deterministic verification on top of Chrome 9223 via Playwright `connectOverCDP`
 |---|---|
 | `browser_load_tasks({ path })` | Load declarative JSON tasks file. Auto-loaded from `$VERIFIER_TASKS_PATH` at startup if set. |
 | `browser_list_tasks()` | List loaded task names + args + step counts. |
-| `browser_run_task({ name, args? })` | Execute task by name. `{{argName}}` 치환. bail-on-error. |
+| `browser_run_task({ name?, steps?, args? })` | 두 모드. **Named**: `{ name }`로 등록된 task 실행. **Inline**: `{ steps: [...] }`로 파일 없이 즉시 실행 — 1회성 mixed flow(click→wait→verify)에 적합. 둘 다 `{{argName}}` 치환 + bail-on-error. |
 
 ### Escape / Media (advanced)
 | Tool | Purpose |
@@ -58,6 +58,33 @@ Deterministic verification on top of Chrome 9223 via Playwright `connectOverCDP`
 ---
 
 ## Task Workflow
+
+### 1회성 인터랙션+검증 — inline steps (파일 X)
+
+PR마다 다른 변경 → 다른 검증인 경우. 파일 생성 / commit 부담 없이 한 콜:
+
+```
+browser_run_task({
+  "steps": [
+    { "op": "goto", "url": "http://localhost:3000/banner" },
+    { "op": "verify", "checks": [
+        { "type": "heading_present", "text": "새 배너 텍스트" },
+        { "type": "class_present", "selector": "[data-slot=banner-a]", "className": "bg-primary" }
+    ]},
+    { "op": "click", "text": "자세히 보기" },
+    { "op": "wait_selector", "selector": "[role=dialog]", "timeoutMs": 2000 },
+    { "op": "verify", "checks": [
+        { "type": "modal_open" },
+        { "type": "class_present", "selector": "[data-slot=bs-cta]", "className": "bg-primary" },
+        { "type": "computed_style", "selector": "[data-slot=bs-cta]", "prop": "fontWeight", "expected": "600" }
+    ]}
+  ]
+})
+```
+
+- 결과는 step-by-step 구조화 — 어느 step에서 실패했는지 즉답
+- Locator-retry / stabilization 그대로 (runner가 처리)
+- 잘 동작하면 그대로 복붙해서 tasks.json에 task로 굳혀도 됨
 
 ### Existing task로 실행
 
@@ -127,8 +154,9 @@ Target: 3-5 MCP calls, < 10s wall time.
 2. **Project tasks auto-load** — `$PWD/.browser-verifier/tasks.json` 있으면 `browser_load_tasks({ path: ... })` 호출. 없으면 무시(silent). 사용자에게 알림 X.
 3. **Read 컴포넌트 코드 먼저** — DOM 구조 / selector / 라우트 파악.
 4. Category에 맞는 검증 (아래 결정표):
-   - Reusable flow → `browser_run_task` 1콜
-   - 일회성 assertion → `browser_verify` 1콜
+   - Reusable flow → `browser_run_task({ name })` 1콜
+   - 1회성 mixed (click + wait + verify 등 연쇄) → `browser_run_task({ steps })` 인라인 1콜
+   - 일회성 assertion only → `browser_verify` 1콜
    - Ad-hoc inspection → `browser_eval` (필요할 때만)
 5. `browser_check_console({ level: "error", clear: true })`.
 6. `browser_check_network({ status: "errors" })` — API 변경 시.
@@ -140,8 +168,9 @@ Target: 3-5 MCP calls, < 10s wall time.
 |---|---|
 | 페이지 상태 한 번 스냅샷 (route / CTA / errors / modal) | `browser_semantic_state` |
 | 다중 assertion (route + heading + cta + errors 등) | `browser_verify` 한 콜 |
-| 반복 multi-step flow (로그인, 모달 열기, 폼 제출) | `browser_run_task` |
-| 새 flow 작성 후 회귀 가능 | task 정의 → load → run |
+| 반복 multi-step flow (로그인, 모달 열기, 폼 제출) | `browser_run_task({ name })` |
+| 1회성 인터랙션+검증 mixed (배너 클릭→바텀시트 UI 확인 등) | `browser_run_task({ steps })` — 인라인, 파일 생성 X |
+| 새 flow 작성 후 회귀 가능 | task 정의 → load → `run_task({ name })` |
 | 표현 불가능한 raw 인스펙션 (computed style, classList, 객체 내부) | `browser_eval` IIFE |
 | 디자인 토큰 매칭 | `browser_eval` + classList → `references/token-check.md` |
 | Console / Network 에러 | `check_console` / `check_network` |

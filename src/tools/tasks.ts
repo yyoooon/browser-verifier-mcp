@@ -8,7 +8,8 @@ import {
   getTasks,
   setTasks,
 } from "../runtime/tasks/registry.js";
-import { runTask } from "../runtime/tasks/runner.js";
+import { runTask, runInlineSteps } from "../runtime/tasks/runner.js";
+import type { TaskOp } from "../runtime/tasks/types.js";
 import { ok, fail } from "../lib/result.js";
 
 export const loadDefinition: Tool = {
@@ -71,36 +72,66 @@ export async function listHandler() {
 export const runDefinition: Tool = {
   name: "browser_run_task",
   description:
-    "Execute a loaded task by name with the given args. String args are substituted into {{argName}} placeholders inside step fields. Runs deterministically, stops on first failed step, returns { ok, name, steps: [...], failedAt?, elapsedMs }. Each step record includes op, ok, elapsedMs and the inner result.",
+    "Execute task steps deterministically (bail on first failure). Two modes:\n" +
+    "  - Named: { name: 'taskName', args? } — run a task previously loaded via browser_load_tasks.\n" +
+    "  - Inline: { steps: [...], args? } — pass step array directly; no file / no registration needed. Use this for one-off interactive flows (click → wait → verify mixed) without committing a task file.\n" +
+    "Step shape (same as tasks.json): { op: 'goto'|'click'|'fill'|'navigate'|'reload'|'wait_url'|'wait_text'|'wait_selector'|'wait_load'|'verify'|'screenshot', ...opFields }. Fields support {{argName}} substitution from args. Both modes return { ok, name, steps: [...], failedAt?, elapsedMs }; inline name is 'inline'.",
   inputSchema: {
     type: "object",
     properties: {
-      name: { type: "string" },
+      name: {
+        type: "string",
+        description: "Name of a previously-loaded task. Provide name OR steps.",
+      },
+      steps: {
+        type: "array",
+        description:
+          "Inline step list (same shape as task steps). Provide name OR steps.",
+        items: {
+          type: "object",
+          properties: { op: { type: "string" } },
+          required: ["op"],
+          additionalProperties: true,
+        },
+      },
       args: {
         type: "object",
         description:
-          "Key/value map. Values get coerced to strings during substitution.",
+          "Key/value map. Values get coerced to strings during {{argName}} substitution.",
         additionalProperties: true,
       },
     },
-    required: ["name"],
   },
 };
 
 export async function runHandler(args: {
-  name: string;
+  name?: string;
+  steps?: TaskOp[];
   args?: Record<string, unknown>;
 }) {
   try {
-    const result = await runTask(args.name, args.args ?? {});
-    return result.ok
-      ? ok(result)
-      : fail(`task "${args.name}" failed at step ${result.failedAt}`, {
-          name: result.name,
-          steps: result.steps,
-          failedAt: result.failedAt,
-          elapsedMs: result.elapsedMs,
-        });
+    const hasName = typeof args.name === "string" && args.name.length > 0;
+    const hasSteps = Array.isArray(args.steps) && args.steps.length > 0;
+    if (!hasName && !hasSteps) {
+      return fail("must provide either 'name' (registered task) or 'steps' (inline)");
+    }
+    if (hasName && hasSteps) {
+      return fail("provide only one of 'name' or 'steps', not both");
+    }
+
+    const result = hasName
+      ? await runTask(args.name!, args.args ?? {})
+      : await runInlineSteps(args.steps!, args.args ?? {});
+
+    if (result.ok) return ok(result);
+
+    const label = hasName ? `task "${args.name}"` : "inline steps";
+    return fail(`${label} failed at step ${result.failedAt}`, {
+      name: result.name,
+      steps: result.steps,
+      failedAt: result.failedAt,
+      elapsedMs: result.elapsedMs,
+    });
   } catch (e) {
     return fail(e instanceof Error ? e.message : String(e), {
       name: args.name,
