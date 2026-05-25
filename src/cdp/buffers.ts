@@ -3,7 +3,7 @@ import type {
   Page,
   Request as PWRequest,
   Response as PWResponse,
-} from "playwright";
+} from "playwright-core";
 
 export interface ConsoleEntry {
   level: "log" | "info" | "warning" | "error" | "debug" | "trace";

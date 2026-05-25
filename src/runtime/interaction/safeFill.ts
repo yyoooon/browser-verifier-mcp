@@ -1,4 +1,4 @@
-import type { Locator } from "playwright";
+import type { Locator } from "playwright-core";
 
 export interface SafeFillOptions {
   timeoutMs?: number;

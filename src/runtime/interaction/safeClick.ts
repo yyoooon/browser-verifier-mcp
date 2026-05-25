@@ -1,4 +1,4 @@
-import type { Locator, Page } from "playwright";
+import type { Locator, Page } from "playwright-core";
 import { waitPageStable } from "../navigation/waitPageStable.js";
 
 export interface SafeClickOptions {

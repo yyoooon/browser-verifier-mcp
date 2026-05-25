@@ -1,4 +1,4 @@
-import { chromium, type Browser, type BrowserContext, type Page } from "playwright";
+import { chromium, type Browser, type BrowserContext, type Page } from "playwright-core";
 import { findTargetByPort } from "../cdp/target.js";
 import { attachBuffers, detachBuffers } from "../cdp/buffers.js";
 
