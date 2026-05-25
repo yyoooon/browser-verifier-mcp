@@ -1,0 +1,29 @@
+import type { Tool } from "@modelcontextprotocol/sdk/types.js";
+import { listTargets } from "../cdp/target.js";
+import { getCurrent } from "../cdp/client.js";
+import { ok, fail } from "../lib/result.js";
+
+export const listDefinition: Tool = {
+  name: "browser_tab_list",
+  description:
+    "List all page targets in Chrome 9223 with their URL, title, and id. Excludes devtools:// internal pages. Use to verify which worktree ports have open tabs without spawning agent-browser.",
+  inputSchema: { type: "object", properties: {} },
+};
+
+export async function listHandler() {
+  try {
+    const targets = await listTargets();
+    const current = getCurrent();
+    const pages = targets
+      .filter((t) => t.type === "page" && !t.url.startsWith("devtools://"))
+      .map((t) => ({
+        id: t.id,
+        url: t.url,
+        title: t.title,
+        attached: current?.targetId === t.id,
+      }));
+    return ok({ ok: true, total: pages.length, tabs: pages });
+  } catch (e) {
+    return fail(e instanceof Error ? e.message : String(e));
+  }
+}

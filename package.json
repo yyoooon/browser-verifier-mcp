@@ -1,0 +1,22 @@
+{
+  "name": "@your-org/browser-verifier",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "main": "dist/server.js",
+  "scripts": {
+    "dev": "tsx src/server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "chrome-remote-interface": "^0.34.0"
+  },
+  "devDependencies": {
+    "@types/chrome-remote-interface": "^0.34.0",
+    "@types/node": "^25.9.1",
+    "tsx": "^4.0.0",
+    "typescript": "^5.0.0"
+  }
+}
