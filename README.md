@@ -4,6 +4,8 @@ Claude Code 같은 MCP 클라이언트에서 동작하는 **결정적 브라우�
 
 LLM에게 "WHAT을 검증할지"만 시키고, "HOW"(hydration / retry / 안정화)는 runtime이 처리한다.
 
+> **AI / 브라우저 자동화 / MCP를 처음 다룬다면** → [`docs/concepts.md`](./docs/concepts.md) 부터 읽으면 됨. 이 프로젝트가 "왜" 이런 모양인지 개념부터 설명함.
+
 ---
 
 ## 왜 쓰나
