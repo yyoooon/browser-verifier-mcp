@@ -1,6 +1,7 @@
 {
-  "name": "@your-org/browser-verifier",
-  "version": "0.0.1",
+  "name": "browser-verifier-mcp",
+  "version": "0.1.0",
+  "description": "Deterministic browser verification MCP server. Playwright connectOverCDP + task runtime for Claude Code and other MCP clients.",
   "private": true,
   "type": "module",
   "main": "dist/server.js",
@@ -9,6 +10,26 @@
     "build": "tsc",
     "start": "node dist/server.js"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yyoooon/browser-verifier-mcp.git"
+  },
+  "homepage": "https://github.com/yyoooon/browser-verifier-mcp#readme",
+  "bugs": {
+    "url": "https://github.com/yyoooon/browser-verifier-mcp/issues"
+  },
+  "keywords": [
+    "mcp",
+    "claude",
+    "claude-code",
+    "playwright",
+    "verification",
+    "browser-automation",
+    "cdp",
+    "chrome-devtools-protocol"
+  ],
+  "author": "yyoooon",
+  "license": "MIT",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.0",
     "playwright-core": "^1.60.0"
