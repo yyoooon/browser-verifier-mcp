@@ -1,7 +1,7 @@
 import dns from "node:dns";
 
 // macOS Node 17+에서 'localhost'를 ::1(IPv6)로 먼저 resolve해서
-// IPv4 only로 LISTEN 중인 Chrome 9223 (등) 로컬 서비스에 못 붙는 함정 회피.
+// IPv4 only로 LISTEN 중인 Chrome CDP(기본 127.0.0.1:9223) 등 로컬 서비스에 못 붙는 함정 회피.
 dns.setDefaultResultOrder("ipv4first");
 
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";

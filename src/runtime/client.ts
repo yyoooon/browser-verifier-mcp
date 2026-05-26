@@ -1,8 +1,12 @@
-import { chromium, type Browser, type BrowserContext, type Page } from "playwright-core";
+import {
+  chromium,
+  type Browser,
+  type BrowserContext,
+  type Page,
+} from "playwright-core";
 import { findTargetByPort } from "../cdp/target.js";
 import { attachBuffers, detachBuffers } from "../cdp/buffers.js";
-
-const CDP_PORT = 9223;
+import { CDP_BASE_URL } from "../cdp/config.js";
 
 export interface RuntimeState {
   browser: Browser;
@@ -32,14 +36,14 @@ export async function attach(port: number): Promise<AttachInfo> {
     state = null;
   }
 
-  const target = await findTargetByPort(port, CDP_PORT);
+  const target = await findTargetByPort(port);
   if (!target) {
     throw new Error(
-      `No Chrome target at http(s)://localhost:${port}. Open the dev server in Chrome 9223 first.`,
+      `No Chrome target at http(s)://localhost:${port}. Open the dev server in the Chrome instance attached to CDP at ${CDP_BASE_URL}.`,
     );
   }
 
-  const browser = await chromium.connectOverCDP(`http://127.0.0.1:${CDP_PORT}`);
+  const browser = await chromium.connectOverCDP(CDP_BASE_URL);
   const page = findPageByUrl(browser, target.url);
   if (!page) {
     await closeQuiet(browser);

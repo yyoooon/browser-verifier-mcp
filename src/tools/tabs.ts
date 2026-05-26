@@ -6,7 +6,7 @@ import { ok, fail } from "../lib/result.js";
 export const listDefinition: Tool = {
   name: "browser_tab_list",
   description:
-    "List all page targets in Chrome 9223 with their URL, title, and id. Excludes devtools:// internal pages. Use to verify which worktree ports have open tabs without spawning agent-browser.",
+    "List all page targets in the attached Chrome (via CDP) with their URL, title, and id. Excludes devtools:// internal pages. Use to verify which worktree ports have open tabs without spawning agent-browser.",
   inputSchema: { type: "object", properties: {} },
 };
 

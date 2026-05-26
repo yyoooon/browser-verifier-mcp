@@ -6,7 +6,7 @@ import { ok, fail } from "../lib/result.js";
 export const definition: Tool = {
   name: "browser_setup",
   description:
-    "Attach to a Chrome 9223 page target serving localhost:<port>. Auto-detects port from .env.local / lsof if omitted. Primes console + network buffers. Call once at the start of a verification cycle; subsequent browser_* tools reuse the same CDP session (no per-call spawn overhead).",
+    "Attach to a Chrome page target serving localhost:<port> via CDP (endpoint configurable via BROWSER_VERIFIER_CDP_URL, default http://127.0.0.1:9223). Auto-detects port from .env.local / lsof if omitted. Primes console + network buffers. Call once at the start of a verification cycle; subsequent browser_* tools reuse the same CDP session (no per-call spawn overhead).",
   inputSchema: {
     type: "object",
     properties: {
