@@ -15,11 +15,7 @@ import {
 import { runVerify } from "../verify/runVerify.js";
 import { captureScreenshot } from "../screenshot.js";
 import { getTask } from "./registry.js";
-import type {
-  StepRecord,
-  TaskOp,
-  TaskRunResult,
-} from "./types.js";
+import type { StepRecord, TaskOp, TaskRunResult } from "./types.js";
 
 const TEMPLATE_RE = /\{\{(\w+)\}\}/g;
 
@@ -124,7 +120,7 @@ async function executeStep(step: TaskOp): Promise<unknown> {
     case "reload":
       return await reload();
     case "wait_url":
-      return await waitForUrl(step.pattern, step.timeoutMs);
+      return await waitForUrl(step.pattern ?? step.url, step.timeoutMs);
     case "wait_text":
       return await waitForText(step.text, step.timeoutMs);
     case "wait_selector":

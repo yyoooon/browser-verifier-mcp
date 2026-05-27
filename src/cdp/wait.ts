@@ -11,16 +11,23 @@ export interface WaitResult {
 }
 
 export async function waitForUrl(
-  pattern: string,
+  pattern: string | undefined,
   timeoutMs: number = DEFAULT_TIMEOUT_MS,
 ): Promise<WaitResult> {
+  if (!pattern) {
+    return {
+      ok: false,
+      elapsedMs: 0,
+      error:
+        "wait_url needs a glob in the 'pattern' field (alias: 'url'), e.g. { op: 'wait_url', pattern: '**/dashboard' }",
+    };
+  }
   const state = await ensureAttached();
   const t0 = Date.now();
   try {
-    await state.page.waitForURL(
-      (url) => globMatch(pattern, url.toString()),
-      { timeout: timeoutMs },
-    );
+    await state.page.waitForURL((url) => globMatch(pattern, url.toString()), {
+      timeout: timeoutMs,
+    });
     return {
       ok: true,
       elapsedMs: Date.now() - t0,
@@ -110,11 +117,7 @@ export async function waitForLoad(
                 return true;
             }
             if (el.children) {
-              for (
-                let i = 0;
-                i < el.children.length && i < 50;
-                i++
-              )
+              for (let i = 0; i < el.children.length && i < 50; i++)
                 stack.push(el.children[i]);
             }
           }

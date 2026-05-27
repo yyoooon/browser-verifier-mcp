@@ -11,7 +11,7 @@ export type TaskOp =
       timeoutMs?: number;
     }
   | { op: "reload" }
-  | { op: "wait_url"; pattern: string; timeoutMs?: number }
+  | { op: "wait_url"; pattern?: string; url?: string; timeoutMs?: number }
   | { op: "wait_text"; text: string; timeoutMs?: number }
   | { op: "wait_selector"; selector: string; timeoutMs?: number }
   | {

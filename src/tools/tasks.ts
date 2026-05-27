@@ -1,8 +1,5 @@
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
-import {
-  loadTasksFromFile,
-  type LoadResult,
-} from "../runtime/tasks/loader.js";
+import { loadTasksFromFile, type LoadResult } from "../runtime/tasks/loader.js";
 import {
   getSourcePath,
   getTasks,
@@ -75,7 +72,19 @@ export const runDefinition: Tool = {
     "Execute task steps deterministically (bail on first failure). Two modes:\n" +
     "  - Named: { name: 'taskName', args? } — run a task previously loaded via browser_load_tasks.\n" +
     "  - Inline: { steps: [...], args? } — pass step array directly; no file / no registration needed. Use this for one-off interactive flows (click → wait → verify mixed) without committing a task file.\n" +
-    "Step shape (same as tasks.json): { op: 'goto'|'click'|'fill'|'navigate'|'reload'|'wait_url'|'wait_text'|'wait_selector'|'wait_load'|'verify'|'screenshot', ...opFields }. Fields support {{argName}} substitution from args. Both modes return { ok, name, steps: [...], failedAt?, elapsedMs }; inline name is 'inline'.",
+    "Step shape (same as tasks.json): { op, ...opFields }. Per-op fields (note: the URL field name differs per op):\n" +
+    "  - goto: { url, timeoutMs? }\n" +
+    "  - click: { text }\n" +
+    "  - fill: { selector, value }\n" +
+    "  - navigate: { clickText, expectedUrl, timeoutMs? }  (click then wait for URL)\n" +
+    "  - reload: {}\n" +
+    "  - wait_url: { pattern, timeoutMs? }  (alias: url) — glob, e.g. '**/dashboard'\n" +
+    "  - wait_text: { text, timeoutMs? }\n" +
+    "  - wait_selector: { selector, timeoutMs? }\n" +
+    "  - wait_load: { state?: 'load'|'domcontentloaded'|'networkidle'|'hydrated', timeoutMs? }\n" +
+    "  - verify: { checks: [...] }  (same checks as browser_verify)\n" +
+    "  - screenshot: { name?, fullPage?, format?, quality? }\n" +
+    "Fields support {{argName}} substitution from args. Both modes return { ok, name, steps: [...], failedAt?, elapsedMs }; inline name is 'inline'.",
   inputSchema: {
     type: "object",
     properties: {
@@ -113,7 +122,9 @@ export async function runHandler(args: {
     const hasName = typeof args.name === "string" && args.name.length > 0;
     const hasSteps = Array.isArray(args.steps) && args.steps.length > 0;
     if (!hasName && !hasSteps) {
-      return fail("must provide either 'name' (registered task) or 'steps' (inline)");
+      return fail(
+        "must provide either 'name' (registered task) or 'steps' (inline)",
+      );
     }
     if (hasName && hasSteps) {
       return fail("provide only one of 'name' or 'steps', not both");
