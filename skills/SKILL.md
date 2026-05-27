@@ -152,13 +152,13 @@ Target: 3-5 MCP calls, < 10s wall time.
 
 1. `browser_setup({ port })` — port from `.env.local`, or omit for auto-detect.
 2. **Project tasks auto-load** — `$PWD/.browser-verifier/tasks.json` 있으면 `browser_load_tasks({ path: ... })` 호출. 없으면 무시(silent). 사용자에게 알림 X.
-3. **Read 컴포넌트 코드 먼저** — DOM 구조 / selector / 라우트 파악.
+3. **라이브 인스펙션 먼저, 코드 선파악 금지** — selector / route / DOM 구조 / 요소 존재는 화면에 직접 물어봄(`eval` / `semantic_state`)이 코드 읽기보다 빠름. 컴포넌트 코드는 **예상과 다를 때 그 핸들러 1파일만** Read. 전체 플로우 선파악·서브에이전트 매핑 ❌ (서프라이즈 없는데 코드부터 = 느림의 1번 원인).
 4. Category에 맞는 검증 (아래 결정표):
    - Reusable flow → `browser_run_task({ name })` 1콜
    - 1회성 mixed (click + wait + verify 등 연쇄) → `browser_run_task({ steps })` 인라인 1콜
    - 일회성 assertion only → `browser_verify` 1콜
    - Ad-hoc inspection → `browser_eval` (필요할 때만)
-5. `browser_check_console({ level: "error", clear: true })`.
+5. `browser_check_console({ level: "error", clear: true })` — **자동 실행 안 함 (사용자 설정).** 사용자가 콘솔 에러를 명시적으로 물을 때만.
 6. `browser_check_network({ status: "errors" })` — API 변경 시.
 7. `browser_sentinel_save()` — PASS 또는 wiring-only SKIP일 때.
 
@@ -175,6 +175,18 @@ Target: 3-5 MCP calls, < 10s wall time.
 | 디자인 토큰 매칭 | `browser_eval` + classList → `references/token-check.md` |
 | Console / Network 에러 | `check_console` / `check_network` |
 | 시각 sanity ("화면에 떴는지") | `browser_screenshot` + Read |
+
+---
+
+## 실패 시 행동 (Fail handling)
+
+step/클릭이 실패로 떠도 **같은 액션을 재시도하지 말 것.** harness의 `ok:false`는 거짓일 수 있다 — 타임아웃이어도 액션은 실제로 발생했을 수 있음(특히 클라이언트 nav를 유발하는 클릭). 순서:
+
+1. **harness ok/fail 말고 라이브 상태부터 확인** — `eval` 1콜로 `route + (필요 시)console + 타깃 요소`를 **한 번에** 뽑아 실제로 바뀌었는지 본다. 바뀌었으면 그 step은 사실상 성공 → 다음으로.
+2. **진단은 1콜로 묶기** — route 따로 / console 따로 / DOM 따로 = 파편화 금지. 막혔을 때야말로 한 `eval`에 다 넣는다.
+3. **정말 안 됐으면 같은 클릭 반복 X** — 왜 안 닿았는지(오버레이/포털/disabled/애니메이션)를 1콜로 진단하고, 방식을 바꾼다(네이티브 클릭, 다른 selector).
+
+→ 이번 회귀의 핵심 교훈: false-fail을 진짜 실패로 믿고 동일 클릭을 반복 → 왕복 폭증. 한 번 실패 = 즉시 라이브 상태 확인.
 
 ---
 
@@ -229,7 +241,7 @@ Light path 진입 (5-10초 예상) — /record에서 verify(route+cta+no_errors)
 
 ## Category Selection (무엇을 검증할지)
 
-diff 패턴으로 cat set 결정. cat 4(console + network)는 항상 디폴트 포함.
+diff 패턴으로 cat set 결정. network 에러 체크(cat 4)는 API 변경 시 디폴트 포함. **console 에러 자동 확인은 비활성 — 사용자가 명시적으로 요청할 때만** (사용자 설정).
 
 | 변경 | cat | 주력 도구 |
 |---|---|---|
@@ -238,7 +250,7 @@ diff 패턴으로 cat set 결정. cat 4(console + network)는 항상 디폴트 �
 | 새 JSX mount / 조건부 렌더 | 1-a | `verify` + `screenshot` |
 | 새 `onClick` / nav 트리거 | 2 | `verify` (route check) or task |
 | 폼/모달/다단계 | 3 | task (이미 정의됐으면 run, 아니면 작성) |
-| API/mutation/fetch | 4 | `check_console` + `check_network` |
+| API/mutation/fetch | 4 | `check_network` (console는 요청 시에만) |
 | useEffect 초기 fetch | 4 + 1-a | `check_network` + `verify({loaded})` |
 | Figma 토큰 적용 (classList / computed 검증) | 1-b | `verify` (style checks) → `references/token-check.md`, `references/figma-tailwind-check.md` |
 

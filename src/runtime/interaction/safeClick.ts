@@ -28,7 +28,12 @@ export async function safeClick(
 
   try {
     await locator.scrollIntoViewIfNeeded({ timeout: timeoutMs });
-    await locator.click({ timeout: timeoutMs });
+    await locator.waitFor({ state: "visible", timeout: timeoutMs });
+    // Native element.click() instead of Playwright's coordinate dispatch:
+    // coordinate hit-testing fails for buttons inside portaled overlays
+    // (Radix Dialog/Sheet) — the trusted click never reaches the React
+    // onClick handler. element.click() invokes the handler directly.
+    await locator.evaluate((el) => (el as HTMLElement).click());
   } catch (e) {
     return {
       ok: false,
