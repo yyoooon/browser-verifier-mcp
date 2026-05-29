@@ -20,3 +20,6 @@ yarn-error.log*
 .vscode/
 .idea/
 *.swp
+
+# browser-verifier sentinel (local verification state)
+/.claude/

@@ -234,6 +234,8 @@ browser_verify({
 
 `agents/` — verification-planner / browser-executor / systematic-debugger 역할 정의.
 
+`hooks/` — 자동 발동용 Claude Code hook 3종 (선택). 설치·배선은 [`hooks/README.md`](./hooks/README.md).
+
 상세 가이드:
 - [`skills/SKILL.md`](./skills/SKILL.md) — 5 rules, Standard Cycle, Tier/Category 선택
 - [`skills/references/tier-selection.md`](./skills/references/tier-selection.md) — Light vs Full path
