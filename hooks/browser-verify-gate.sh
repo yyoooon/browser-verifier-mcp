@@ -3,13 +3,14 @@
 # Stop hook: git diff에 검증 대상 코드 변경이 있으면 verification 사이클을 트리거.
 # 이미 검증 완료된 상태(sentinel 일치)면 스킵.
 #
-# Opt-in: BROWSER_VERIFIER_AUTO=1 이 설정된 환경에서만 동작.
-# 미설정이면 즉시 종료(no-op) — plugin install만으로 자동 검증이 시작되지 않도록.
+# Opt-in: $HOME/.browser-verifier-auto 파일이 있을 때만 동작.
+# Plugin 사용자는 /browser-verifier:enable-auto 슬래시 명령으로 토글.
+# Manual 사용자는 직접 `touch $HOME/.browser-verifier-auto` / `rm $HOME/.browser-verifier-auto`.
 
 set -euo pipefail
 
-# 명시적 opt-in이 없으면 아무 일도 안 함
-[ "${BROWSER_VERIFIER_AUTO:-}" = "1" ] || exit 0
+# 명시적 opt-in 파일이 없으면 아무 일도 안 함
+[ -f "$HOME/.browser-verifier-auto" ] || exit 0
 
 # git 저장소 밖이면 즉시 종료
 PROJECT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || exit 0
