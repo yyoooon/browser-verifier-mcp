@@ -8,19 +8,109 @@ LLM에게 "WHAT을 검증할지"만 시키고, "HOW"(hydration / retry / 안정�
 
 ---
 
-## 왜 쓰나
+## 한 줄 정의
 
-LLM이 `browser_eval`로 매번 IIFE 짜서 raw DOM dump하면:
-- timing 민감 (React rerender → stale 클릭)
-- 같은 검증 두 번 돌리면 결과 다름 (flaky)
-- 실패 메시지 free-form, "왜?"를 LLM이 추론해야 함
+> **내가 코드 고친 후 브라우저에서 직접 확인하는 일을 Claude가 대신 하게 해주는 플러그인.**
 
-이 MCP 서버는:
-- **`browser_semantic_state`** — `{ route, modal, primaryCTA, headings, errors, ... }`를 한 번에
+---
+
+## 어떤 문제를 푸는가
+
+웹 개발하다 보면 매번 반복하는 루프:
+
+```
+1. 코드 수정
+2. 브라우저 새로고침
+3. 그 페이지로 이동
+4. 버튼 눌러보고, 폼 채워보고
+5. "어 잘 되네" / "어 콘솔 에러 떴네"
+6. 다시 코드로
+```
+
+4~5번을 사람이 매번 하는 게 귀찮음. Claude한테 "확인해줘" 시켜도, Claude는 너의 브라우저를 못 봐서 알 수가 없음.
+
+**이 플러그인은 Claude한테 "너의 브라우저를 보는 눈"을 달아준다.** Claude가 직접 페이지 상태를 읽고, 클릭하고, 폼 채우고, 콘솔 에러 검사하고, 결과를 보고함.
+
+### Before / After
+
+```
+[이전]
+너: "방금 바꾼 카드 배경색이 의도대로 적용됐는지 봐줘"
+Claude: "코드상으론 className이 박혀있어 보입니다.
+        실제 적용은 브라우저에서 확인해주세요."  ← Claude는 못 봄
+
+[이후]
+너: "방금 바꾼 카드 배경색이 의도대로 적용됐는지 봐줘"
+Claude: (브라우저 직접 검사)
+       ✅ PASS — 카드 배경 rgb(214, 234, 250) 적용 확인
+       체크: bg-blue-weak 클래스 박힘 / computed bg 일치 / console 0
+```
+
+---
+
+## 잘 쓰는 시나리오
+
+### 1. Figma 디자인 → Tailwind로 옮긴 직후
+
+```
+너: "이 카드 컴포넌트 Figma 스펙대로 적용됐어?"
+Claude: ✅ padding 16px / radius 12px / font-weight 500 / bg #d6eafa 일치
+```
+
+### 2. 다단계 인터랙션이 잘 동작하는지
+
+```
+너: "A 배너 텍스트 바꾸고 버튼 누르면 바텀시트 잘 떠?"
+Claude: (page 이동 → 버튼 클릭 → 바텀시트 검증)
+       ✅ 모달 열림 + 헤더 "신규 가입" 확인 + 인풋 3개
+```
+
+### 3. 코드 수정 후 회귀 없는지
+
+```
+너: "방금 변경이 다른 페이지 깨뜨리진 않았어?"
+Claude: ✅ /dashboard / /settings / /profile — console 에러 0
+```
+
+### 4. 반복하는 검증을 task로 굳히기
+
+로그인 → 대시보드 검증을 자주 한다면 한 번 만들어두고 다음부턴:
+
+```
+너: "로그인 task 돌려서 대시보드 확인해줘"
+Claude: (저장된 task 실행, 결정적으로 보고)
+```
+
+매번 같은 검증을 동일한 결과로 돌릴 수 있음.
+
+---
+
+## 누구한테 잘 맞나
+
+✅ **잘 맞는 사람**:
+- React / Next.js 기반 웹앱 개발자
+- Figma → Tailwind 워크플로 자주 쓰는 사람
+- Claude Code로 코드 자주 수정하는 사람
+- 작은 변경에도 회귀 자주 신경 쓰는 사람
+
+❌ **별로 안 맞는 사람**:
+- 시각 픽셀-정확 회귀가 본업인 사람 (Percy / Chromatic 영역)
+- 비-React 환경 (작동은 하지만 일부 휴리스틱이 React 기반)
+- 브라우저 자동화 자체가 처음이고 셋업 부담이 큰 경우
+
+---
+
+## 내부적으로 어떻게 동작하나 (관심 있으면)
+
+LLM이 raw DOM을 매번 직접 살피게 하면 timing 민감 / flaky / 추론 비용 큼. 그래서 이 서버는 **결정적 layer**를 사이에 둔다:
+
+- **`browser_semantic_state`** — `{ route, modal, primaryCTA, headings, errors, ... }`를 한 번에 추출
 - **`browser_verify`** — 8개 state + 3개 style check를 배치로 평가, `expected vs observed` 구조화
 - **`browser_run_task`** — multi-step flow를 1콜로 실행 (registered task 또는 inline steps)
 - Playwright Locator + auto-retry로 클릭 결정성 확보
 - Console / Network noise 자동 필터 (HMR, CareHubBridge 등)
+
+**LLM은 "WHAT을 검증할지"만 결정**하고, **"HOW"(hydration / retry / 안정화)는 runtime이 처리**한다. 자세히는 [`docs/concepts.md`](./docs/concepts.md).
 
 ---
 
