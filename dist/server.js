@@ -13,6 +13,7 @@ import { definition as sentinelDef, handler as sentinelHandler, } from "./tools/
 import { definition as screenshotDef, handler as screenshotHandler, } from "./tools/screenshot.js";
 import { definition as semanticDef, handler as semanticHandler, } from "./tools/semantic.js";
 import { definition as verifyDef, handler as verifyHandler, } from "./tools/verify.js";
+import { definition as inspectDef, handler as inspectHandler, } from "./tools/inspect.js";
 import { loadDefinition as tasksLoadDef, listDefinition as tasksListDef, runDefinition as tasksRunDef, loadHandler as tasksLoadHandler, listHandler as tasksListHandler, runHandler as tasksRunHandler, } from "./tools/tasks.js";
 import { fillDefinition as fillDef, clickDefinition as clickDef, pressKeyDefinition as pressKeyDef, selectOptionDefinition as selectOptionDef, navigateDefinition as navigateDef, fillHandler, clickHandler, pressKeyHandler, selectOptionHandler, navigateHandler, } from "./tools/actions.js";
 import { loadTasksFromFile } from "./runtime/tasks/loader.js";
@@ -27,6 +28,7 @@ const tools = [
     getUrlDef,
     visibilityDefinition,
     semanticDef,
+    inspectDef,
     verifyDef,
     tasksLoadDef,
     tasksListDef,
@@ -60,6 +62,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 return await visibilityHandler(args);
             case "browser_semantic_state":
                 return await semanticHandler();
+            case "browser_inspect":
+                return await inspectHandler(args);
             case "browser_verify":
                 return await verifyHandler(args);
             case "browser_load_tasks":

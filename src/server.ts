@@ -47,6 +47,10 @@ import {
   handler as verifyHandler,
 } from "./tools/verify.js";
 import {
+  definition as inspectDef,
+  handler as inspectHandler,
+} from "./tools/inspect.js";
+import {
   loadDefinition as tasksLoadDef,
   listDefinition as tasksListDef,
   runDefinition as tasksRunDef,
@@ -83,6 +87,7 @@ const tools = [
   getUrlDef,
   visibilityDefinition,
   semanticDef,
+  inspectDef,
   verifyDef,
   tasksLoadDef,
   tasksListDef,
@@ -125,6 +130,10 @@ server.setRequestHandler(
           return await visibilityHandler(args as { selector: string });
         case "browser_semantic_state":
           return await semanticHandler();
+        case "browser_inspect":
+          return await inspectHandler(
+            args as Parameters<typeof inspectHandler>[0],
+          );
         case "browser_verify":
           return await verifyHandler(
             args as Parameters<typeof verifyHandler>[0],
