@@ -6,10 +6,7 @@
     "name": "yyoooon"
   },
   "homepage": "https://github.com/yyoooon/browser-verifier-mcp",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/yyoooon/browser-verifier-mcp.git"
-  },
+  "repository": "https://github.com/yyoooon/browser-verifier-mcp",
   "license": "MIT",
   "keywords": [
     "mcp",
