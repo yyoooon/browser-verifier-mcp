@@ -10,7 +10,16 @@ Figma MCP에서 받은 디자인 spec을 Tailwind로 구현한 뒤, **실제 렌
 
 라우팅 · 핸들러 · API 변경 등 시각 무관 작업엔 생략.
 
-## 기본 패턴 — verify check 3종
+## 두 단계 흐름 — inspect로 관찰 → verify로 회귀 가드
+
+| 단계 | 도구 | 목적 |
+|---|---|---|
+| **1. 첫 적용 직후** | `browser_inspect` | 현재 컴퓨티드 값을 한 콜에 일괄 관찰. Figma spec과 비교. expected 추측 불필요. |
+| **2. 값 확정 후** | `browser_verify` (`class_present` + `computed_style` + `class_absent`) | 그 값을 expected에 박아 회귀 가드. |
+
+inspect는 "지금 뭐 박혀있냐"를 본다, verify는 "기대 값이랑 같냐"를 묻는다. 처음엔 inspect, 그 다음부턴 verify.
+
+### verify check 3종 (회귀 가드 단계)
 
 | 검증 | check 타입 | 용도 |
 |---|---|---|
@@ -97,28 +106,33 @@ Tailwind v4부터 **theme 컬러는 OKLCH로 출력**됨:
 
 토큰 기반 컬러(`bg-blue-100`, `text-primary` 등) 검증 시 첫 호출에서 컴퓨티드 값을 한 번 찍어서 expected에 박음:
 
-### Step 1: `browser_eval`로 컴퓨티드 캡처
+### Step 1: `browser_inspect`로 컴퓨티드 캡처
 
-```js
-(() => {
-  const el = document.querySelector("[data-slot=card]");
-  const cs = getComputedStyle(el);
-  return {
-    backgroundColor: cs.backgroundColor,
-    color: cs.color,
-    borderColor: cs.borderColor,
-  };
-})()
+```json
+{
+  "targets": {
+    "card": {
+      "selector": "[data-slot=card]",
+      "style": ["backgroundColor", "color", "borderColor"]
+    }
+  }
+}
 ```
 
 결과 예:
 ```json
 {
-  "backgroundColor": "oklch(0.932 0.032 255.585)",
-  "color": "oklch(0.205 0 0)",
-  "borderColor": "oklch(0.922 0 0)"
+  "values": {
+    "card": {
+      "backgroundColor": "oklch(0.932 0.032 255.585)",
+      "color": "oklch(0.205 0 0)",
+      "borderColor": "oklch(0.922 0 0)"
+    }
+  }
 }
 ```
+
+selector 여러 개라면 같은 콜에 `card / button / badge` 식으로 묶어서 한 번에. `browser_eval`로 raw JS 짜는 대신 선언적 dict.
 
 ### Step 2: 이 값을 verify check의 expected로 박음
 
@@ -142,7 +156,7 @@ Tailwind v4부터 **theme 컬러는 OKLCH로 출력**됨:
 ```
 1. 너: "Card 컴포넌트 디자인 적용 확인해줘"
 2. LLM:
-   a. browser_eval로 컴퓨티드 캡처
+   a. browser_inspect로 컴퓨티드 캡처 (selector × prop 일괄)
    b. .browser-verifier/tasks.json에 verifyCardDesign task 추가:
       - goto, wait_selector, verify(class_present + computed_style ...)
    c. browser_load_tasks → browser_run_task

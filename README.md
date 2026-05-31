@@ -226,7 +226,7 @@ LLM 보고:
 
 ---
 
-## 19개 도구
+## 20개 도구
 
 ### Lifecycle
 - `browser_setup({ port?, cdpPort? })` — 사이클 시작. Chrome 9223 + localhost:port 탭에 연결.
@@ -235,13 +235,15 @@ LLM 보고:
 
 ### Inspection
 - `browser_semantic_state()` — 페이지 상태 한 번에: route / title / loading / modal / primaryCTA / headings / errors / inputCount / focusedElement.
+- `browser_inspect({ targets })` — selector별 computed style / text / classList / rect / attr **관찰**을 1콜에 일괄. expected 모를 때(첫 Figma 비교, 토큰 캡처) 사용. assertion은 `browser_verify`.
 - `browser_get_url()` — 현재 URL.
 - `browser_is_visible({ selector })` — DOM + clientRect + computed style 가시성.
 
 ### Verification
-- `browser_verify({ checks })` — 한 콜에 다중 assertion. 8 state + 3 style check 종류.
+- `browser_verify({ checks })` — 한 콜에 다중 **assertion**. 8 state + 3 style check 종류.
   - state: `primary_cta`, `no_errors`, `loaded`, `route`, `modal_open`, `modal_closed`, `heading_present`, `input_count`
   - style (batched DOM): `computed_style`, `class_present`, `class_absent`
+  - **관찰만** 필요하면 `browser_inspect` (위, expected 불필요).
 - `browser_check_console({ level?, clear? })` — 콘솔 버퍼 (노이즈 자동 필터).
 - `browser_check_network({ status?, urlContains? })` — 네트워크 버퍼 (default: errors).
 

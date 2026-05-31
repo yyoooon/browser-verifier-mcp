@@ -28,27 +28,44 @@ Figma → Tailwind 변환 흐름 전체는 → `figma-tailwind-check.md`.
 
 → expected는 **브라우저 정규화 형식** (자세히는 `figma-tailwind-check.md`의 "브라우저 정규화" 표 참고).
 
-### 2차: `browser_eval` (raw)
+### 2차: `browser_inspect` — 컴퓨티드 캡처 (1차 도입 / expected 미정)
 
-verify check로 표현 불가능한 동적 케이스만:
+처음 토큰 도입 시 컴퓨티드 값을 한 콜에 일괄 관찰. 캡처 후 verify로 굳힘.
 
-- DOM이 querySelector로 못 잡히는 구조 (shadow DOM 등)
-- 한 element의 여러 속성을 한꺼번에 dump해서 LLM이 추론 (디버깅 단계)
-- 처음 토큰 도입 시 **컴퓨티드 값 캡처** — 캡처 후엔 verify로 굳힘
-
-```js
-// 캡처 (디버깅 / 초기 expected 결정)
-const el = document.querySelector("[data-slot=card]");
-const cs = getComputedStyle(el);
-return {
-  hasClass: el.classList.contains("bg-blue-weak"),
-  bg: cs.backgroundColor,   // "rgb(214, 234, 250)" or "oklch(...)"
-  color: cs.color,
-  borderRadius: cs.borderRadius,
-};
+```json
+{
+  "targets": {
+    "card": {
+      "selector": "[data-slot=card]",
+      "style": ["backgroundColor", "color", "borderRadius"],
+      "classList": true
+    }
+  }
+}
 ```
 
-이 출력을 task의 `verify` step에 expected로 박은 뒤 이후엔 1차 방식으로 회귀 감지.
+응답:
+```json
+{
+  "values": {
+    "card": {
+      "backgroundColor": "rgb(214, 234, 250)",
+      "color": "rgb(17, 24, 39)",
+      "borderRadius": "12px",
+      "classList": ["bg-blue-weak", "p-4", "rounded-xl"]
+    }
+  }
+}
+```
+
+이 값을 task의 `verify` step에 expected로 박은 뒤 이후엔 1차 방식으로 회귀 감지.
+
+### 3차: `browser_eval` (raw)
+
+verify / inspect로 표현 불가능한 동적 케이스만:
+
+- DOM이 querySelector로 못 잡히는 구조 (shadow DOM 등)
+- 토큰 외 동작 (DOM mutation observer, ResizeObserver 결과 등)
 
 ## 금지
 
