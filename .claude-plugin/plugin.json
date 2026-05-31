@@ -1,0 +1,21 @@
+{
+  "name": "browser-verifier",
+  "version": "0.1.0",
+  "description": "Deterministic browser verification for Claude Code. Playwright connectOverCDP + 14 MCP tools + auto-verify skill + opt-in Stop hook.",
+  "author": {
+    "name": "yyoooon"
+  },
+  "homepage": "https://github.com/yyoooon/browser-verifier-mcp",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yyoooon/browser-verifier-mcp.git"
+  },
+  "license": "MIT",
+  "keywords": [
+    "mcp",
+    "claude-code",
+    "playwright",
+    "verification",
+    "browser-automation"
+  ]
+}

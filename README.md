@@ -32,19 +32,43 @@ LLM이 `browser_eval`로 매번 IIFE 짜서 raw DOM dump하면:
 
 ---
 
-## 설치
+## 설치 — Claude Code Plugin (권장)
+
+Claude Code 안에서 두 줄:
+
+```
+/plugin marketplace add yyoooon/browser-verifier-mcp
+/plugin install browser-verifier@yyoooon
+```
+
+이 한 번으로 **MCP 서버 + skill + agent + slash command + Stop hook 매핑**이 모두 자동 wiring. `~/.claude.json` 직접 편집 불필요. 끝.
+
+업데이트는 `/plugin marketplace update yyoooon` 후 `/plugin install` 재실행. 제거는 `/plugin uninstall browser-verifier@yyoooon`.
+
+### 자동 검증 켜기 (선택)
+
+설치 직후엔 **자동 발동 OFF** 상태. 코드 수정마다 자동으로 검증 사이클 돌리고 싶으면:
+
+```
+/browser-verifier:enable-auto
+```
+
+끄려면 `/browser-verifier:disable-auto`.
+
+> 셸에서 직접 `touch ~/.browser-verifier-auto` (또는 `rm`)으로도 동일 — slash command가 결국 이 sentinel 파일을 만들고 지움.
+
+---
+
+## 설치 — Manual (plugin 사용 안 할 때)
+
+기존 방식으로 직접 wiring하고 싶다면:
 
 ```bash
 git clone https://github.com/yyoooon/browser-verifier-mcp.git
 cd browser-verifier-mcp
 npm install
 npm run build
-# dist/server.js 생성됨
 ```
-
----
-
-## MCP 서버 등록
 
 `~/.claude.json`의 `mcpServers`에 추가:
 
@@ -61,6 +85,8 @@ npm run build
 ```
 
 선택: 시작 시 task 자동 로드하려면 `env.VERIFIER_TASKS_PATH`에 절대경로 추가.
+
+Skill / Hook 활성화는 별도 — [`hooks/README.md`](./hooks/README.md) + skill 디렉토리를 `~/.claude/skills/`에 심볼릭 링크.
 
 Claude Code 재시작.
 
@@ -224,25 +250,25 @@ browser_verify({
 })
 ```
 
-브라우저 정규화 / Tailwind v4 OKLCH 함정 / 처음 토큰 캡처 패턴 → [`skills/references/figma-tailwind-check.md`](./skills/references/figma-tailwind-check.md).
+브라우저 정규화 / Tailwind v4 OKLCH 함정 / 처음 토큰 캡처 패턴 → [`skills/verify/references/figma-tailwind-check.md`](./skills/verify/references/figma-tailwind-check.md).
 
 ---
 
 ## Claude Code skill / agents
 
-`skills/SKILL.md` — 자동 발동 가능한 skill 정의 (Stop hook + `[auto-verify]` 시그널).
+`skills/verify/SKILL.md` — 자동 발동 가능한 skill 정의 (Stop hook + `[auto-verify]` 시그널).
 
 `agents/` — verification-planner / browser-executor / systematic-debugger 역할 정의.
 
-`hooks/` — 자동 발동용 Claude Code hook 3종 (선택). 설치·배선은 [`hooks/README.md`](./hooks/README.md).
+`hooks/` — 자동 발동용 Stop hook 1종 + plugin이 자동 wiring할 `hooks.json` manifest. 설치·배선은 [`hooks/README.md`](./hooks/README.md).
 
 상세 가이드:
-- [`skills/SKILL.md`](./skills/SKILL.md) — 5 rules, Standard Cycle, Tier/Category 선택
-- [`skills/references/tier-selection.md`](./skills/references/tier-selection.md) — Light vs Full path
-- [`skills/references/category-selection.md`](./skills/references/category-selection.md) — diff → 검증 카테고리
-- [`skills/references/full-path-brief.md`](./skills/references/full-path-brief.md) — Subagent dispatch
-- [`skills/references/figma-tailwind-check.md`](./skills/references/figma-tailwind-check.md) — Figma 검증
-- [`skills/references/token-check.md`](./skills/references/token-check.md) — 토큰 적용 검사
+- [`skills/verify/SKILL.md`](./skills/verify/SKILL.md) — 5 rules, Standard Cycle, Tier/Category 선택
+- [`skills/verify/references/tier-selection.md`](./skills/verify/references/tier-selection.md) — Light vs Full path
+- [`skills/verify/references/category-selection.md`](./skills/verify/references/category-selection.md) — diff → 검증 카테고리
+- [`skills/verify/references/full-path-brief.md`](./skills/verify/references/full-path-brief.md) — Subagent dispatch
+- [`skills/verify/references/figma-tailwind-check.md`](./skills/verify/references/figma-tailwind-check.md) — Figma 검증
+- [`skills/verify/references/token-check.md`](./skills/verify/references/token-check.md) — 토큰 적용 검사
 
 ---
 
