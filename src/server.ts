@@ -54,6 +54,18 @@ import {
   listHandler as tasksListHandler,
   runHandler as tasksRunHandler,
 } from "./tools/tasks.js";
+import {
+  fillDefinition as fillDef,
+  clickDefinition as clickDef,
+  pressKeyDefinition as pressKeyDef,
+  selectOptionDefinition as selectOptionDef,
+  navigateDefinition as navigateDef,
+  fillHandler,
+  clickHandler,
+  pressKeyHandler,
+  selectOptionHandler,
+  navigateHandler,
+} from "./tools/actions.js";
 import { loadTasksFromFile } from "./runtime/tasks/loader.js";
 import { setTasks } from "./runtime/tasks/registry.js";
 
@@ -77,6 +89,11 @@ const tools = [
   tasksRunDef,
   evalDef,
   screenshotDef,
+  fillDef,
+  clickDef,
+  pressKeyDef,
+  selectOptionDef,
+  navigateDef,
 ];
 
 server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools }));
@@ -127,6 +144,26 @@ server.setRequestHandler(
         case "browser_screenshot":
           return await screenshotHandler(
             args as Parameters<typeof screenshotHandler>[0],
+          );
+        case "browser_fill":
+          return await fillHandler(
+            args as Parameters<typeof fillHandler>[0],
+          );
+        case "browser_click":
+          return await clickHandler(
+            args as Parameters<typeof clickHandler>[0],
+          );
+        case "browser_press_key":
+          return await pressKeyHandler(
+            args as Parameters<typeof pressKeyHandler>[0],
+          );
+        case "browser_select_option":
+          return await selectOptionHandler(
+            args as Parameters<typeof selectOptionHandler>[0],
+          );
+        case "browser_navigate":
+          return await navigateHandler(
+            args as Parameters<typeof navigateHandler>[0],
           );
         default:
           return {
