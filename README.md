@@ -90,6 +90,8 @@ Skill / Hook 활성화는 별도 — [`hooks/README.md`](./hooks/README.md) + sk
 
 Claude Code 재시작.
 
+> 이 repo에 직접 코드 변경 / commit하려면 [`CONTRIBUTING.md`](./CONTRIBUTING.md) 참고 (pre-commit hook 셋업 + dist/ 동기화 자동화).
+
 ---
 
 ## Chrome 9223 셋업

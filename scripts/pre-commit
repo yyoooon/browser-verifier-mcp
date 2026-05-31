@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# Git pre-commit hook: auto-rebuild dist/ when src/ is staged.
+#
+# 동작:
+#   1. 스테이지된 파일 중 src/ 가 있으면 npm run build 실행
+#   2. 새로 생성된 dist/ 변경분을 자동 stage
+#   3. dist/만 staged됐거나, 다른 파일만 staged된 경우 통과
+#
+# 우회: git commit --no-verify
+#   (CI(.github/workflows/build-check.yml)가 push 시 잡아냄)
+
+set -euo pipefail
+
+# src/ 파일이 staged 된 게 없으면 통과
+if ! git diff --cached --name-only --diff-filter=ACMR | grep -q '^src/'; then
+  exit 0
+fi
+
+echo "[pre-commit] src/ changed — rebuilding dist/..."
+
+# 깨끗하게 빌드 (stale 산출물 제거)
+rm -rf dist
+if ! npm run build --silent; then
+  echo "[pre-commit] ❌ build 실패 — commit abort. src/ 에러를 먼저 고치세요." >&2
+  exit 1
+fi
+
+# 빌드 결과 자동 stage
+git add dist/
+
+ADDED=$(git diff --cached --name-only --diff-filter=A -- dist/ | wc -l | tr -d ' ')
+MODIFIED=$(git diff --cached --name-only --diff-filter=M -- dist/ | wc -l | tr -d ' ')
+echo "[pre-commit] ✅ dist/ 갱신 + 스테이지 (added: $ADDED, modified: $MODIFIED)"

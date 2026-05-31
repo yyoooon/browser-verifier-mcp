@@ -1,0 +1,39 @@
+name: Build Check
+
+# dist/ 가 src/ 와 동기화돼 있는지 확인. 누락된 빌드를 push 단계에서 잡아냄.
+# pre-commit hook이 우회됐거나 다른 머신에서 commit한 경우 안전망.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Clean rebuild dist/
+        run: |
+          rm -rf dist
+          npm run build
+
+      - name: Verify dist/ matches committed
+        run: |
+          if ! git diff --exit-code dist/; then
+            echo "::error::dist/ is out of sync with src/."
+            echo "Run 'npm run build' locally and commit the dist/ changes."
+            echo "Or install the pre-commit hook with: scripts/install-hooks.sh"
+            exit 1
+          fi
+          echo "✅ dist/ in sync with src/"
