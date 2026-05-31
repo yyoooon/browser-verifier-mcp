@@ -7,8 +7,8 @@
     {
       "name": "browser-verifier",
       "source": "./",
-      "description": "Deterministic browser verification for Claude Code. Playwright connectOverCDP + 14 MCP tools + auto-verify skill + opt-in Stop hook.",
-      "version": "0.1.0",
+      "description": "Deterministic browser verification for Claude Code. Playwright connectOverCDP + 19 MCP tools + auto-verify skill + opt-in Stop hook.",
+      "version": "0.2.0",
       "license": "MIT",
       "keywords": [
         "mcp",

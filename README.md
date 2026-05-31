@@ -226,10 +226,10 @@ LLM 보고:
 
 ---
 
-## 14개 도구
+## 19개 도구
 
 ### Lifecycle
-- `browser_setup({ port? })` — 사이클 시작. Chrome 9223 + localhost:port 탭에 연결.
+- `browser_setup({ port?, cdpPort? })` — 사이클 시작. Chrome 9223 + localhost:port 탭에 연결.
 - `browser_tab_list()` — Chrome 9223의 모든 page target.
 - `browser_sentinel_save({ projectRoot? })` — `.claude/.last-verified-hash` 작성, Stop hook 루프 차단.
 
@@ -245,13 +245,20 @@ LLM 보고:
 - `browser_check_console({ level?, clear? })` — 콘솔 버퍼 (노이즈 자동 필터).
 - `browser_check_network({ status?, urlContains? })` — 네트워크 버퍼 (default: errors).
 
+### Interaction (Phase 8)
+- `browser_fill({ selector, value })` — React controlled input 안전 입력 (Playwright `fill` + native setter fallback).
+- `browser_click({ selector? | text? })` — `el.click()` 기반 — Radix/Headless UI portal 안 요소도 React onClick 트리거.
+- `browser_press_key({ key, selector? })` — Enter / Escape / Tab / 방향키 등 (selector 지정 시 그 요소에 focus 후 dispatch).
+- `browser_select_option({ triggerSelector? | triggerText?, optionText })` — Radix Select / Headless UI Listbox / shadcn Select 통합 — 트리거 열고 옵션 클릭 1콜.
+- `browser_navigate({ url, timeoutMs? })` — `page.goto()` (eval 안의 `location.href`가 일으키는 execution context destroyed 회피).
+
 ### Tasks (multi-step flow)
 - `browser_load_tasks({ path })` — JSON tasks 파일 로드.
 - `browser_list_tasks()` — 로드된 task 메타데이터.
 - `browser_run_task({ name?, steps?, args? })` — 두 모드: registered task by `name`, 또는 inline `steps`.
 
 ### Escape / Media
-- `browser_eval({ script, timeoutMs? })` — Raw JS. semantic_state / verify로 표현 불가능할 때만.
+- `browser_eval({ script, timeoutMs? })` — Raw JS. semantic_state / verify / interaction 도구로 표현 불가능할 때만.
 - `browser_screenshot({ name?, fullPage?, format?, quality? })` — JPEG/PNG 캡처.
 
 ---

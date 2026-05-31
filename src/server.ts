@@ -70,7 +70,7 @@ import { loadTasksFromFile } from "./runtime/tasks/loader.js";
 import { setTasks } from "./runtime/tasks/registry.js";
 
 const server = new Server(
-  { name: "browser-verifier", version: "0.1.0" },
+  { name: "browser-verifier", version: "0.2.0" },
   { capabilities: { tools: {} } },
 );
 

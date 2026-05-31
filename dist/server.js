@@ -17,7 +17,7 @@ import { loadDefinition as tasksLoadDef, listDefinition as tasksListDef, runDefi
 import { fillDefinition as fillDef, clickDefinition as clickDef, pressKeyDefinition as pressKeyDef, selectOptionDefinition as selectOptionDef, navigateDefinition as navigateDef, fillHandler, clickHandler, pressKeyHandler, selectOptionHandler, navigateHandler, } from "./tools/actions.js";
 import { loadTasksFromFile } from "./runtime/tasks/loader.js";
 import { setTasks } from "./runtime/tasks/registry.js";
-const server = new Server({ name: "browser-verifier", version: "0.1.0" }, { capabilities: { tools: {} } });
+const server = new Server({ name: "browser-verifier", version: "0.2.0" }, { capabilities: { tools: {} } });
 const tools = [
     setupDef,
     tabListDef,
