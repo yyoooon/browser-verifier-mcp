@@ -13,8 +13,4 @@ export function getTask(name) {
 export function getSourcePath() {
     return sourcePath;
 }
-export function clearTasks() {
-    registry = {};
-    sourcePath = null;
-}
 //# sourceMappingURL=registry.js.map

@@ -285,11 +285,6 @@ export async function reload(): Promise<NavigateResult> {
   }
 }
 
-export async function activateTab(): Promise<void> {
-  const state = await ensureAttached();
-  await state.page.bringToFront();
-}
-
 function errMsg(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }

@@ -223,10 +223,6 @@ export async function reload() {
         };
     }
 }
-export async function activateTab() {
-    const state = await ensureAttached();
-    await state.page.bringToFront();
-}
 function errMsg(e) {
     return e instanceof Error ? e.message : String(e);
 }

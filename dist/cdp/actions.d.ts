@@ -30,4 +30,3 @@ export interface NavigateResult {
 }
 export declare function navigate(url: string, timeoutMs?: number): Promise<NavigateResult>;
 export declare function reload(): Promise<NavigateResult>;
-export declare function activateTab(): Promise<void>;

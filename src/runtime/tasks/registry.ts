@@ -19,8 +19,3 @@ export function getTask(name: string): TaskDefinition | undefined {
 export function getSourcePath(): string | null {
   return sourcePath;
 }
-
-export function clearTasks(): void {
-  registry = {};
-  sourcePath = null;
-}
