@@ -13,7 +13,7 @@
 
 > **개발 중인 웹앱이 의도대로 동작하는지를 AI가 결정적으로 검증하게 해주는 다리(bridge).**
 
-다리의 한쪽엔 AI(Claude Code), 다른 쪽엔 브라우저(Chrome)가 있다. 다리 위에 14개의 도구가 놓여 있고, AI가 그 도구들을 "골라서 써"서 브라우저 상태를 본다.
+다리의 한쪽엔 AI(Claude Code), 다른 쪽엔 브라우저(Chrome)가 있다. 다리 위에 19개의 도구가 놓여 있고, AI가 그 도구들을 "골라서 써"서 브라우저 상태를 본다.
 
 ---
 
@@ -220,15 +220,16 @@ Client ↔ Server가 어떻게 메시지를 주고받는지.
 
 이 프로세스는 stdio로 한 줄씩 JSON을 주고받는다. Server는 죽지 않고 계속 떠 있으면서 명령을 받음.
 
-### 3.4 이 프로젝트가 노출하는 14개 도구
+### 3.4 이 프로젝트가 노출하는 19개 도구
 
 각 도구는 `src/tools/*.ts`의 핸들러 함수. `src/server.ts`가 등록하고 dispatch.
 
-- `browser_setup` — Chrome 9223에 연결
+- `browser_setup` — Chrome (기본 9223)에 연결
 - `browser_semantic_state` — 페이지 상태 컴팩트하게
 - `browser_verify` — 다중 assertion
 - `browser_run_task` — multi-step flow 실행
-- ... (총 14개)
+- `browser_fill` / `browser_click` / `browser_press_key` / `browser_select_option` / `browser_navigate` — 입력 · 클릭 · 키 · Radix-style select · URL 이동 직접 발사
+- ... (총 19개, 자세한 분류는 5.2 참고)
 
 LLM은 이름과 description 보고 어떤 도구를 어떤 순서로 쓸지 스스로 결정.
 
@@ -280,7 +281,7 @@ LLM은 명령을 내리고, 도구가 결정적으로 실행. **LLM이 자기 �
                   │ MCP (JSON-RPC over stdio)
                   ↓
 ┌─────────────────────────────────────────────┐
-│  MCP Server (이 프로젝트, src/server.ts)    │  ← 14 도구 노출
+│  MCP Server (이 프로젝트, src/server.ts)    │  ← 19 도구 노출
 │   ├─ src/tools/*.ts   (각 도구 핸들러)      │
 │   └─ src/runtime/*.ts (Playwright primitive) │
 └─────────────────┬───────────────────────────┘
@@ -298,11 +299,12 @@ LLM은 명령을 내리고, 도구가 결정적으로 실행. **LLM이 자기 �
 
 명령은 위에서 아래로, 결과는 아래에서 위로 흐름.
 
-### 5.2 14개 도구의 분류
+### 5.2 19개 도구의 분류
 
 - **Lifecycle** (3) — setup, tab_list, sentinel_save: 사이클 시작/끝 관리
 - **Inspection** (3) — semantic_state, get_url, is_visible: 페이지 상태 읽기
 - **Verification** (3) — verify, check_console, check_network: 명시적 검증
+- **Interaction** (5) — fill, click, press_key, select_option, navigate: 입력 / 클릭 / 키 / Radix-style select / URL 이동 직접 발사 (Phase 8에서 surface로 올라옴)
 - **Tasks** (3) — load_tasks, list_tasks, run_task: multi-step flow
 - **Escape/Media** (2) — eval, screenshot: 위에서 표현 불가능한 경우
 
@@ -357,7 +359,7 @@ inline 모드는 1회성 인터랙션+검증 mixed flow를 1콜로 처리하기 
 
 ```
 src/
-├── server.ts                    # MCP 진입점, 14 도구 등록 + dispatch
+├── server.ts                    # MCP 진입점, 19 도구 등록 + dispatch
 │
 ├── runtime/                     # Playwright 위에 만든 primitive
 │   ├── client.ts                # connectOverCDP 싱글톤
@@ -445,7 +447,7 @@ LLM이 `browser_verify({ checks: [...] })`를 호출했을 때:
 
 | 파일 | 역할 | 예시 |
 |---|---|---|
-| `src/server.ts` | MCP 엔트리. 14 도구 등록 + dispatch | switch(name) { case "browser_X": handler() } |
+| `src/server.ts` | MCP 엔트리. 19 도구 등록 + dispatch | switch(name) { case "browser_X": handler() } |
 | `src/tools/X.ts` | MCP tool 정의 + handler (얇은 wrapper) | description, inputSchema, ok/fail 응답 |
 | `src/runtime/X.ts` | 실제 동작 로직 | Playwright API 호출, 검증 dispatch |
 
