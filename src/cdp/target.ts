@@ -9,9 +9,11 @@ export interface CDPTarget {
   webSocketDebuggerUrl: string;
 }
 
-export async function listTargets(): Promise<CDPTarget[]> {
+export async function listTargets(
+  cdpUrl: string = CDP_BASE_URL,
+): Promise<CDPTarget[]> {
   return new Promise((resolve, reject) => {
-    const req = http.get(`${CDP_BASE_URL}/json/list`, (res) => {
+    const req = http.get(`${cdpUrl}/json/list`, (res) => {
       let data = "";
       res.on("data", (c) => (data += c));
       res.on("end", () => {
@@ -31,8 +33,9 @@ export async function listTargets(): Promise<CDPTarget[]> {
 
 export async function findTargetByPort(
   devPort: number,
+  cdpUrl: string = CDP_BASE_URL,
 ): Promise<CDPTarget | null> {
-  const targets = await listTargets();
+  const targets = await listTargets(cdpUrl);
   const re = new RegExp(
     `^https?://(localhost|127\\.0\\.0\\.1):${devPort}(/|$)`,
   );

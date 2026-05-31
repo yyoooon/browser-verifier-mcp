@@ -15,6 +15,7 @@ export interface RuntimeState {
   targetId: string;
   url: string;
   port: number;
+  cdpUrl: string;
 }
 
 let state: RuntimeState | null = null;
@@ -23,12 +24,26 @@ export interface AttachInfo {
   port: number;
   targetId: string;
   url: string;
+  cdpUrl: string;
 }
 
-export async function attach(port: number): Promise<AttachInfo> {
-  if (state && state.port === port && (await isAlive(state.page))) {
+export async function attach(
+  port: number,
+  cdpUrl: string = CDP_BASE_URL,
+): Promise<AttachInfo> {
+  if (
+    state &&
+    state.port === port &&
+    state.cdpUrl === cdpUrl &&
+    (await isAlive(state.page))
+  ) {
     state.url = state.page.url();
-    return { port: state.port, targetId: state.targetId, url: state.url };
+    return {
+      port: state.port,
+      targetId: state.targetId,
+      url: state.url,
+      cdpUrl: state.cdpUrl,
+    };
   }
 
   if (state) {
@@ -36,14 +51,14 @@ export async function attach(port: number): Promise<AttachInfo> {
     state = null;
   }
 
-  const target = await findTargetByPort(port);
+  const target = await findTargetByPort(port, cdpUrl);
   if (!target) {
     throw new Error(
-      `No Chrome target at http(s)://localhost:${port}. Open the dev server in the Chrome instance attached to CDP at ${CDP_BASE_URL}.`,
+      `No Chrome target at http(s)://localhost:${port}. Open the dev server in the Chrome instance attached to CDP at ${cdpUrl}.`,
     );
   }
 
-  const browser = await chromium.connectOverCDP(CDP_BASE_URL);
+  const browser = await chromium.connectOverCDP(cdpUrl);
   const page = findPageByUrl(browser, target.url);
   if (!page) {
     await closeQuiet(browser);
@@ -66,10 +81,11 @@ export async function attach(port: number): Promise<AttachInfo> {
     targetId: target.id,
     url: target.url,
     port,
+    cdpUrl,
   };
   attachBuffers(page);
 
-  return { port, targetId: target.id, url: target.url };
+  return { port, targetId: target.id, url: target.url, cdpUrl };
 }
 
 export async function ensureAttached(): Promise<RuntimeState> {
@@ -80,8 +96,9 @@ export async function ensureAttached(): Promise<RuntimeState> {
   }
   if (!(await isAlive(state.page))) {
     const port = state.port;
+    const cdpUrl = state.cdpUrl;
     state = null;
-    await attach(port);
+    await attach(port, cdpUrl);
   }
   return state!;
 }

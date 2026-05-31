@@ -6,13 +6,15 @@ export interface RuntimeState {
     targetId: string;
     url: string;
     port: number;
+    cdpUrl: string;
 }
 export interface AttachInfo {
     port: number;
     targetId: string;
     url: string;
+    cdpUrl: string;
 }
-export declare function attach(port: number): Promise<AttachInfo>;
+export declare function attach(port: number, cdpUrl?: string): Promise<AttachInfo>;
 export declare function ensureAttached(): Promise<RuntimeState>;
 export declare function getCurrent(): RuntimeState | null;
 export declare function detach(): Promise<void>;

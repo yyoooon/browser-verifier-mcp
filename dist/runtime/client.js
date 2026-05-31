@@ -3,20 +3,28 @@ import { findTargetByPort } from "../cdp/target.js";
 import { attachBuffers, detachBuffers } from "../cdp/buffers.js";
 import { CDP_BASE_URL } from "../cdp/config.js";
 let state = null;
-export async function attach(port) {
-    if (state && state.port === port && (await isAlive(state.page))) {
+export async function attach(port, cdpUrl = CDP_BASE_URL) {
+    if (state &&
+        state.port === port &&
+        state.cdpUrl === cdpUrl &&
+        (await isAlive(state.page))) {
         state.url = state.page.url();
-        return { port: state.port, targetId: state.targetId, url: state.url };
+        return {
+            port: state.port,
+            targetId: state.targetId,
+            url: state.url,
+            cdpUrl: state.cdpUrl,
+        };
     }
     if (state) {
         await closeQuiet(state.browser);
         state = null;
     }
-    const target = await findTargetByPort(port);
+    const target = await findTargetByPort(port, cdpUrl);
     if (!target) {
-        throw new Error(`No Chrome target at http(s)://localhost:${port}. Open the dev server in the Chrome instance attached to CDP at ${CDP_BASE_URL}.`);
+        throw new Error(`No Chrome target at http(s)://localhost:${port}. Open the dev server in the Chrome instance attached to CDP at ${cdpUrl}.`);
     }
-    const browser = await chromium.connectOverCDP(CDP_BASE_URL);
+    const browser = await chromium.connectOverCDP(cdpUrl);
     const page = findPageByUrl(browser, target.url);
     if (!page) {
         await closeQuiet(browser);
@@ -35,9 +43,10 @@ export async function attach(port) {
         targetId: target.id,
         url: target.url,
         port,
+        cdpUrl,
     };
     attachBuffers(page);
-    return { port, targetId: target.id, url: target.url };
+    return { port, targetId: target.id, url: target.url, cdpUrl };
 }
 export async function ensureAttached() {
     if (!state) {
@@ -45,8 +54,9 @@ export async function ensureAttached() {
     }
     if (!(await isAlive(state.page))) {
         const port = state.port;
+        const cdpUrl = state.cdpUrl;
         state = null;
-        await attach(port);
+        await attach(port, cdpUrl);
     }
     return state;
 }

@@ -12,8 +12,8 @@ export const listDefinition: Tool = {
 
 export async function listHandler() {
   try {
-    const targets = await listTargets();
     const current = getCurrent();
+    const targets = await listTargets(current?.cdpUrl);
     const pages = targets
       .filter((t) => t.type === "page" && !t.url.startsWith("devtools://"))
       .map((t) => ({

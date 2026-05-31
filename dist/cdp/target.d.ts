@@ -5,5 +5,5 @@ export interface CDPTarget {
     type: string;
     webSocketDebuggerUrl: string;
 }
-export declare function listTargets(): Promise<CDPTarget[]>;
-export declare function findTargetByPort(devPort: number): Promise<CDPTarget | null>;
+export declare function listTargets(cdpUrl?: string): Promise<CDPTarget[]>;
+export declare function findTargetByPort(devPort: number, cdpUrl?: string): Promise<CDPTarget | null>;
