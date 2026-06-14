@@ -1,6 +1,24 @@
-# Hooks (선택 · opt-in)
+# Hooks
 
-코드 수정 직후 자동으로 browser-verifier 검증 사이클을 트리거하는 Stop hook 1종.
+Plugin 설치 시 자동 등록되는 2종:
+
+| 스크립트 | 이벤트 | 기본 동작 |
+|---|---|---|
+| `session-start-chrome-check.sh` | `SessionStart` | dev Chrome CDP 떠있는지 진단. 떠있으면 침묵, 없으면 한 줄 안내 (always-on, opt-out 가능) |
+| `browser-verify-gate.sh` | `Stop` | 자동 검증 트리거 (opt-in: `$HOME/.browser-verifier-auto`) |
+
+## SessionStart — Chrome CDP 진단 (always-on)
+
+세션 시작 시 `BROWSER_VERIFIER_CDP_URL`(또는 9223)에 Chrome이 떠있는지 1초 안에 확인하고, 없으면 `/browser-verifier:launch-chrome` 안내를 stderr로 한 줄 띄움. Non-blocking (항상 exit 0).
+
+끄기:
+```bash
+touch ~/.browser-verifier-no-session-check
+```
+
+## Stop — auto-verify gate (opt-in)
+
+코드 수정 직후 자동으로 browser-verifier 검증 사이클을 트리거.
 
 > **기본 비활성.** sentinel 파일 `$HOME/.browser-verifier-auto`가 있을 때만 동작. 설치만으로 자동 검증이 시작되지 않도록 가드를 둠.
 
