@@ -1,7 +1,7 @@
 {
   "name": "browser-verifier",
   "version": "0.3.0",
-  "description": "Deterministic browser verification for Claude Code. Playwright connectOverCDP + 20 MCP tools + auto-verify skill + opt-in Stop hook.",
+  "description": "Deterministic browser verification for Claude Code. Playwright connectOverCDP + 15 MCP tools (verification-only) + auto-verify skill + opt-in Stop hook. Pairs with agent-browser for operations.",
   "author": {
     "name": "yyoooon"
   },
