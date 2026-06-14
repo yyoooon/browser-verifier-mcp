@@ -15,7 +15,6 @@ import { definition as semanticDef, handler as semanticHandler, } from "./tools/
 import { definition as verifyDef, handler as verifyHandler, } from "./tools/verify.js";
 import { definition as inspectDef, handler as inspectHandler, } from "./tools/inspect.js";
 import { loadDefinition as tasksLoadDef, listDefinition as tasksListDef, runDefinition as tasksRunDef, loadHandler as tasksLoadHandler, listHandler as tasksListHandler, runHandler as tasksRunHandler, } from "./tools/tasks.js";
-import { fillDefinition as fillDef, clickDefinition as clickDef, pressKeyDefinition as pressKeyDef, selectOptionDefinition as selectOptionDef, navigateDefinition as navigateDef, fillHandler, clickHandler, pressKeyHandler, selectOptionHandler, navigateHandler, } from "./tools/actions.js";
 import { loadTasksFromFile } from "./runtime/tasks/loader.js";
 import { setTasks } from "./runtime/tasks/registry.js";
 const server = new Server({ name: "browser-verifier", version: "0.2.0" }, { capabilities: { tools: {} } });
@@ -35,11 +34,6 @@ const tools = [
     tasksRunDef,
     evalDef,
     screenshotDef,
-    fillDef,
-    clickDef,
-    pressKeyDef,
-    selectOptionDef,
-    navigateDef,
 ];
 server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools }));
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
@@ -76,16 +70,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 return await evalHandler(args);
             case "browser_screenshot":
                 return await screenshotHandler(args);
-            case "browser_fill":
-                return await fillHandler(args);
-            case "browser_click":
-                return await clickHandler(args);
-            case "browser_press_key":
-                return await pressKeyHandler(args);
-            case "browser_select_option":
-                return await selectOptionHandler(args);
-            case "browser_navigate":
-                return await navigateHandler(args);
             default:
                 return {
                     content: [{ type: "text", text: `Unknown tool: ${name}` }],

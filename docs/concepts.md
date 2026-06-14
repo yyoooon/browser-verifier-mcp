@@ -220,7 +220,7 @@ Client ↔ Server가 어떻게 메시지를 주고받는지.
 
 이 프로세스는 stdio로 한 줄씩 JSON을 주고받는다. Server는 죽지 않고 계속 떠 있으면서 명령을 받음.
 
-### 3.4 이 프로젝트가 노출하는 20개 도구
+### 3.4 이 프로젝트가 노출하는 15개 도구
 
 각 도구는 `src/tools/*.ts`의 핸들러 함수. `src/server.ts`가 등록하고 dispatch.
 
@@ -228,9 +228,10 @@ Client ↔ Server가 어떻게 메시지를 주고받는지.
 - `browser_semantic_state` — 페이지 상태 컴팩트하게
 - `browser_inspect` — selector별 computed style / text / rect / classList / attr 일괄 **관찰** (expected 불필요)
 - `browser_verify` — 다중 **assertion** (expected ↔ observed)
-- `browser_run_task` — multi-step flow 실행
-- `browser_fill` / `browser_click` / `browser_press_key` / `browser_select_option` / `browser_navigate` — 입력 · 클릭 · 키 · Radix-style select · URL 이동 직접 발사
-- ... (총 20개, 자세한 분류는 5.2 참고)
+- `browser_run_task` — multi-step flow 실행 (내부 `cdp/actions`로 click/fill/navigate)
+- ... (총 15개, 자세한 분류는 5.2 참고)
+
+> 직접 조작 도구(`browser_fill / click / press_key / select_option / navigate`)는 본 MCP에서 제거됨. **검증 전용**으로 운영하며 조작은 외부(`agent-browser` 등)에 위임한다.
 
 LLM은 이름과 description 보고 어떤 도구를 어떤 순서로 쓸지 스스로 결정.
 

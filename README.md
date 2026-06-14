@@ -247,12 +247,8 @@ LLM 보고:
 - `browser_check_console({ level?, clear? })` — 콘솔 버퍼 (노이즈 자동 필터).
 - `browser_check_network({ status?, urlContains? })` — 네트워크 버퍼 (default: errors).
 
-### Interaction (Phase 8)
-- `browser_fill({ selector, value })` — React controlled input 안전 입력 (Playwright `fill` + native setter fallback).
-- `browser_click({ selector? | text? })` — `el.click()` 기반 — Radix/Headless UI portal 안 요소도 React onClick 트리거.
-- `browser_press_key({ key, selector? })` — Enter / Escape / Tab / 방향키 등 (selector 지정 시 그 요소에 focus 후 dispatch).
-- `browser_select_option({ triggerSelector? | triggerText?, optionText })` — Radix Select / Headless UI Listbox / shadcn Select 통합 — 트리거 열고 옵션 클릭 1콜.
-- `browser_navigate({ url, timeoutMs? })` — `page.goto()` (eval 안의 `location.href`가 일으키는 execution context destroyed 회피).
+### Interaction
+직접 노출되는 조작 툴은 제거됨. 검증 전용 MCP로 운영. 조작은 외부 도구(`agent-browser` 등)에 위임하고, 내부적으로 필요한 멀티스텝 조작은 `browser_run_task`(`cdp/actions` 사용)로 표현.
 
 ### Tasks (multi-step flow)
 - `browser_load_tasks({ path })` — JSON tasks 파일 로드.

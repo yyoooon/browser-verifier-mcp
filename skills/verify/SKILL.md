@@ -17,14 +17,15 @@ Deterministic verification on top of Chrome 9223 via Playwright `connectOverCDP`
 
 **No pixel-perfect diffing** — token 매칭(classList / computed rgba)은 OK, 1-2px 비교는 영역 밖.
 
-## 도구 구성 (20)
+## 도구 구성 (15)
 
 - **Lifecycle**: `browser_setup` · `browser_tab_list` · `browser_sentinel_save`
 - **Inspection**: `browser_semantic_state` · `browser_inspect` · `browser_get_url` · `browser_is_visible`
 - **Verify**: `browser_verify` · `browser_check_console` · `browser_check_network`
-- **Interaction**: `browser_fill` · `browser_click` · `browser_press_key` · `browser_select_option` · `browser_navigate`
 - **Tasks**: `browser_load_tasks` · `browser_list_tasks` · `browser_run_task`
 - **Escape**: `browser_eval` · `browser_screenshot`
+
+> 직접 조작 도구(`browser_fill / click / press_key / select_option / navigate`)는 본 MCP에서 **제거**됨. 조작은 외부 도구(`agent-browser`)에 위임. 멀티스텝 조작이 필요하면 `browser_run_task` 사용 (내부 `cdp/actions` 그대로 동작).
 
 **`inspect` vs `verify`** — `inspect`은 **관찰**(observed만 반환, expected 불필요). 값 모를 때 / 첫 Figma 비교 / 토큰 캡처용. `verify`의 `computed_style` · `class_present`는 **assertion**(expected 대 observed 비교, pass/fail). 값 확정 후 회귀 가드. 둘 다 한 콜에 다중 selector 배치 처리.
 
@@ -51,9 +52,8 @@ Target: 3-5 MCP calls, < 10s.
 | 다중 assertion 한 콜 (expected 확정 후 회귀 가드) | `verify` |
 | 반복 multi-step flow | `run_task({ name })` |
 | 1회성 mixed (click + wait + verify 연쇄) | `run_task({ steps })` 인라인 |
-| 입력 / 클릭 / 키 직접 발사 (1회성) | `fill` · `click` · `press_key` |
-| Radix / shadcn / Headless UI Select | `select_option` (트리거 + 옵션 1콜) |
-| URL 직접 이동 (eval 안 `location.href` 금지) | `navigate` |
+| 입력 / 클릭 / 키 / URL 직접 이동 (1회성) | 외부 `agent-browser`로 위임 |
+| 멀티스텝 인터랙션 (반복용) | `run_task` (내부 `cdp/actions` 사용) |
 | 표현 불가능한 raw 인스펙션 | `eval` IIFE |
 | 디자인 토큰 매칭 | `verify`(`class_present` + `computed_style`) → `references/token-check.md` |
 | Console / Network 에러 | `check_console` / `check_network` |
@@ -65,7 +65,7 @@ step / 클릭 실패로 떠도 **같은 액션 재시도 X.** harness의 `ok:fal
 
 1. **harness ok/fail 말고 라이브 상태부터 확인** — `eval` 1콜로 `route + (필요 시)console + 타깃 요소`를 **한 번에**. 바뀌었으면 사실상 성공 → 다음으로.
 2. **진단은 1콜로 묶기** — route / console / DOM 따로 X. 막혔을 때야말로 한 `eval`에 다 넣는다.
-3. **같은 클릭 반복 X** — 왜 안 닿았는지(오버레이 / 포털 / disabled / 애니메이션)를 1콜로 진단하고, 방식을 바꾼다 (`browser_click({ selector })` → `browser_click({ text })` → `browser_press_key({ key: "Enter", selector })` → 마지막 escape로 `eval`의 `el.click()`).
+3. **같은 클릭 반복 X** — 왜 안 닿았는지(오버레이 / 포털 / disabled / 애니메이션)를 1콜로 진단하고, 방식을 바꾼다. 1회성 클릭은 외부 `agent-browser`(`click @ref` → `click --text`)로 시도, 마지막 escape는 `eval`의 `el.click()`.
 
 ## Plan announcement
 
