@@ -1,0 +1,46 @@
+# Browser Usage Rules
+
+브라우저 자동화/검증 시 두 도구의 역할을 분리한다.
+
+## Tool Roles
+
+**Use `agent-browser` (Bash CLI) for:**
+- navigation, clicking, typing, hovering, scrolling, dragging
+- file upload/download
+- page exploration (`snapshot`, `screenshot`)
+- session / auth / cookie management
+
+**Use `browser-verifier` (MCP) for:**
+- validation (`browser_verify` — assertions)
+- semantic state checks (`browser_semantic_state`, `browser_inspect`)
+- console verification (`browser_check_console`)
+- network verification (`browser_check_network`)
+- visual regression (`browser_sentinel_save`)
+- repeated verification workflows (`browser_run_task`)
+
+## Decision Rules
+
+When the user asks **whether something works** → **Browser Verifier**.
+When the user asks to **navigate, interact, or explore** → **Agent Browser**.
+
+Do **not** manually inspect DOM via Read/Grep if Browser Verifier can answer the question.
+
+Prefer `browser_run_task` over ad-hoc steps for repeated validation workflows.
+
+## Shared Browser
+
+Both tools must point at the same Chrome instance. Dev Chrome runs on `127.0.0.1:{{PORT}}`:
+
+- `agent-browser` → call with `--cdp {{PORT}}` (or set `AGENT_BROWSER_AUTO_CONNECT=1`)
+- `browser-verifier` → defaults to `9223`. For non-default port, set `BROWSER_VERIFIER_CDP_URL=http://127.0.0.1:{{PORT}}`
+
+If Chrome is not running:
+```
+/browser-verifier:launch-chrome {{PORT}}
+```
+
+## Anti-patterns
+
+- ❌ Using `browser-verifier` for clicks/fills/navigation (removed in v0.4.0 — verification-only)
+- ❌ Using `agent-browser` for assertions or console/network verification
+- ❌ Letting the two tools spawn separate browser instances (verification ≠ operation state)
