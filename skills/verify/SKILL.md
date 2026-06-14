@@ -68,6 +68,7 @@ Target: 3-5 MCP calls, < 10s.
 | 멀티스텝 인터랙션 (반복용) | `run_task` (내부 `cdp/actions` 사용) |
 | 표현 불가능한 raw 인스펙션 | `eval` IIFE |
 | 디자인 토큰 매칭 | `verify`(`class_present` + `computed_style`) → `references/token-check.md` |
+| Figma spec 일괄 검증 (typography + style + hover/focus/active) | `verify`(`figma_spec`) → `references/figma-spec-workflow.md` |
 | Console / Network 에러 | `check_console` / `check_network` |
 | 시각 sanity | `screenshot` + Read |
 
@@ -158,3 +159,4 @@ Dev 서버 미기동 / Chrome 9223 미기동 / 보호 라우트 / Diff > 300줄 
 - `references/full-path-brief.md` — subagent Brief 템플릿 + Fix Loop
 - `references/token-check.md` — classList → computed rgba 폴백
 - `references/figma-tailwind-check.md` — Figma → Tailwind 결정적 검증 (computed_style / class_present + OKLCH 함정)
+- `references/figma-spec-workflow.md` — `figma_spec` check 한 줄로 typography + style + hover/focus/active 일괄 검증

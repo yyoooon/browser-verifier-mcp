@@ -1,5 +1,6 @@
 import { extractSemanticState, } from "../semantic/extractSemanticState.js";
 import { globMatch } from "../../lib/glob.js";
+import { loadSpec, runFigmaSpec } from "./figma/runFigmaSpec.js";
 const DOM_CHECK_TYPES = new Set([
     "computed_style",
     "class_present",
@@ -39,12 +40,29 @@ export async function runVerify(page, checks) {
         for (const r of raw)
             domResultsByIdx.set(r.idx, r);
     }
-    const results = checks.map((c, idx) => {
-        if (DOM_CHECK_TYPES.has(c.type)) {
-            return runDomCheck(c, domResultsByIdx.get(idx));
+    const results = [];
+    for (const [idx, c] of checks.entries()) {
+        if (c.type === "figma_spec") {
+            try {
+                const spec = loadSpec(c.spec);
+                const sub = await runFigmaSpec(page, spec);
+                results.push(...sub);
+            }
+            catch (e) {
+                results.push({
+                    type: "figma_spec",
+                    ok: false,
+                    message: `figma_spec failed: ${e instanceof Error ? e.message : String(e)}`,
+                });
+            }
+            continue;
         }
-        return runStateCheck(c, state);
-    });
+        if (DOM_CHECK_TYPES.has(c.type)) {
+            results.push(runDomCheck(c, domResultsByIdx.get(idx)));
+            continue;
+        }
+        results.push(runStateCheck(c, state));
+    }
     return {
         ok: results.every((r) => r.ok),
         checks: results,

@@ -20,7 +20,9 @@ export const definition = {
         "    Tailwind v4 theme colors output oklch(); arbitrary values (bg-[#hex]) stay rgb(). If unsure, run browser_eval once to capture the actual computed value, then bake it into the check.\n" +
         "  - { type: 'class_present', selector, className } — el.classList.contains(className).\n" +
         "  - { type: 'class_absent', selector, className } — !el.classList.contains(className).\n" +
-        "  For Figma → Tailwind verification patterns see skills/references/figma-tailwind-check.md.",
+        "  Figma spec (high-level, expands into multiple sub-results):\n" +
+        "  - { type: 'figma_spec', spec } — spec is either a FigmaSpec object or a string path to a figma-spec.json file. Walks spec.targets[]; for each target applies state (rest|hover|focus|active) via Playwright native input, measures computed style for typography (fontSize, fontWeight, lineHeight, letterSpacing, fontFamily) and arbitrary style props, then compares with EXACT equality. Hex (#rrggbb / #rrggbbaa) in expected is auto-normalized to rgb()/rgba(); transitions/animations are zeroed during measurement so hover/focus/active state values are not mid-animation. Optional spec.cssVariables [] verifies each CSS variable is declared on :root (catches missing design tokens — message prefix '[token-declared]'). Optional target.tokens [] verifies expected className tokens appear in the element's classList (catches raw/arbitrary hex bypassing the design system — message prefix '[token-usage]'). Automatic spec coverage check: if a required category (color | border | typography | spacing) has no prop in spec, emits a '[spec-coverage]' sub-result (warning by default, fail if spec.strict=true). Silence with spec.skipCategories: ['spacing', ...]. Ignored props (silently dropped if put in spec.style): transition*, animation*, cursor, boxSizing — these are non-visual or guarded. One figma_spec check yields one sub-result per (target × prop) plus one per declared/usage token plus coverage warnings. When [token-declared] or [spec-coverage] failures appear, surface them to the user and ask how to handle (add to theme, keep arbitrary, remap, ignore / silence category). For workflow details see skills/verify/references/figma-spec-workflow.md.\n" +
+        "  For Figma → Tailwind verification patterns see skills/verify/references/figma-tailwind-check.md.",
     inputSchema: {
         type: "object",
         properties: {
@@ -43,6 +45,7 @@ export const definition = {
                                 "computed_style",
                                 "class_present",
                                 "class_absent",
+                                "figma_spec",
                             ],
                         },
                     },

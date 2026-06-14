@@ -49,7 +49,40 @@ export type VerifyCheck =
       type: "class_absent";
       selector: string;
       className: string;
+    }
+  | {
+      type: "figma_spec";
+      spec: FigmaSpec | string;
     };
+
+export type FigmaState = "rest" | "hover" | "focus" | "active";
+
+export interface FigmaTypography {
+  fontSize?: string;
+  fontWeight?: string;
+  lineHeight?: string;
+  letterSpacing?: string;
+  fontFamily?: string;
+}
+
+export interface FigmaTarget {
+  selector: string;
+  state?: FigmaState;
+  typography?: FigmaTypography;
+  style?: Record<string, string>;
+  tokens?: string[];
+}
+
+export type FigmaCategory = "color" | "border" | "typography" | "spacing";
+
+export interface FigmaSpec {
+  name?: string;
+  figmaUrl?: string;
+  targets: FigmaTarget[];
+  cssVariables?: string[];
+  strict?: boolean;
+  skipCategories?: FigmaCategory[];
+}
 
 export interface CheckResult {
   type: VerifyCheck["type"];
