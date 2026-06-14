@@ -1,6 +1,6 @@
 {
   "name": "browser-verifier-mcp",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Deterministic browser verification MCP server. Playwright connectOverCDP + task runtime for Claude Code and other MCP clients.",
   "private": true,
   "type": "module",
