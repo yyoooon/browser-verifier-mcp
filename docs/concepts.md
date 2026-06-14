@@ -13,7 +13,7 @@
 
 > **개발 중인 웹앱이 의도대로 동작하는지를 AI가 결정적으로 검증하게 해주는 다리(bridge).**
 
-다리의 한쪽엔 AI(Claude Code), 다른 쪽엔 브라우저(Chrome)가 있다. 다리 위에 20개의 도구가 놓여 있고, AI가 그 도구들을 "골라서 써"서 브라우저 상태를 본다.
+다리의 한쪽엔 AI(Claude Code), 다른 쪽엔 브라우저(Chrome)가 있다. 다리 위에 15개의 도구가 놓여 있고, AI가 그 도구들을 "골라서 써"서 브라우저 상태를 본다.
 
 ---
 
@@ -301,7 +301,7 @@ LLM은 명령을 내리고, 도구가 결정적으로 실행. **LLM이 자기 �
 
 명령은 위에서 아래로, 결과는 아래에서 위로 흐름.
 
-### 5.2 20개 도구의 분류
+### 5.2 15개 도구의 분류
 
 - **Lifecycle** (3) — setup, tab_list, sentinel_save: 사이클 시작/끝 관리
 - **Inspection** (4) — semantic_state, inspect, get_url, is_visible: 페이지 상태 읽기 (`inspect`는 computed style/text/rect/classList/attr 관찰, expected 불필요 — Phase 10)

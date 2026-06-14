@@ -186,17 +186,47 @@ Claude Code 재시작.
 
 ## Chrome 9223 셋업
 
-`~/.zshrc` (또는 `.bashrc`)에 alias:
+### 슬래시 명령 (권장)
+
+```
+/browser-verifier:launch-chrome           # 9223 디폴트
+/browser-verifier:launch-chrome 9224      # 다른 포트
+```
+
+Idempotent — 이미 떠있으면 no-op. user-data-dir은 `~/.cache/browser-verifier/chrome-<port>`.
+
+세션 시작 시 Chrome이 안 떠있으면 SessionStart hook이 자동으로 한 줄 안내. 끄려면 `touch ~/.browser-verifier-no-session-check`.
+
+### 직접 alias (수동 셋업)
 
 ```bash
 alias chrome-debug='/Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome \
   --remote-debugging-port=9223 --user-data-dir=/tmp/chrome-9223 &'
 ```
 
-이후 검증할 때마다:
+검증 흐름:
 1. dev 서버 실행 (예: `yarn dev` → `localhost:3000`)
-2. `chrome-debug`로 새 Chrome 인스턴스 띄움
+2. `chrome-debug` 또는 `/browser-verifier:launch-chrome`로 Chrome 띄움
 3. 그 Chrome에서 `localhost:3000` 직접 열기
+
+## 페어 도구 — `agent-browser`
+
+본 MCP는 **검증 전용** (v0.4.0부터 click/fill/navigate 제거). 조작은 [`agent-browser`](https://github.com/vercel-labs/agent-browser)와 페어로 쓰는 게 권장 워크플로:
+
+| 역할 | 도구 |
+|---|---|
+| 조작 (navigate / click / fill / scroll / hover ...) | `agent-browser --cdp 9223` |
+| 검증 (verify / check_console / check_network / inspect ...) | 본 MCP (`browser_setup` → ...) |
+
+두 도구가 같은 Chrome 9223을 공유 → 로그인/쿠키 상태 일관.
+
+**첫 셋업은 슬래시 명령으로 한 번에**:
+
+```
+/browser-verifier:setup-paired-browser
+```
+
+→ 4가지 (사용 모드 · agent-browser 설치 위치 · CDP 포트 · CLAUDE.md 룰 위치)를 물어보고 설치/launch/룰 작성/검증까지 자동 진행.
 
 ---
 
@@ -226,7 +256,7 @@ LLM 보고:
 
 ---
 
-## 20개 도구
+## 15개 도구 (verification-only)
 
 ### Lifecycle
 - `browser_setup({ port?, cdpPort? })` — 사이클 시작. Chrome 9223 + localhost:port 탭에 연결.

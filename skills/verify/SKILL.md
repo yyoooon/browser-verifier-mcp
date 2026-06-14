@@ -7,6 +7,15 @@ description: Auto-invoke when Stop hook injects "[auto-verify]", or when user ex
 
 Deterministic verification on top of Chrome 9223 via Playwright `connectOverCDP`. One session per cycle. **LLM decides WHAT to verify; runtime decides HOW** (hydration / retry / stabilization은 runtime 처리).
 
+## 페어링 (조작은 agent-browser, 검증은 본 MCP)
+
+본 MCP는 **검증 전용**. 조작(click/fill/navigate)은 `agent-browser`에 위임하는 게 권장 워크플로.
+
+- 같은 Chrome 인스턴스를 **CDP 9223**으로 공유 (`agent-browser --cdp 9223 ...` / `browser_setup({ cdpPort: 9223 })`).
+- 첫 셋업: `/browser-verifier:setup-paired-browser` (인터랙티브 가이드).
+- Chrome 띄우기만: `/browser-verifier:launch-chrome [port]` — idempotent.
+- 세션 시작 시 Chrome 안 떠있으면 SessionStart hook이 자동 안내.
+
 ## The 5 Rules (memorize)
 
 1. **`browser_setup` FIRST** — once per cycle. PORT auto-detect (`.env.local` / lsof). Skip → 다른 도구 모두 fail.
