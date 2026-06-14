@@ -1,6 +1,9 @@
 ---
 name: browser-verifier
-description: Auto-invoke when Stop hook injects "[auto-verify]", or when user explicitly requests verification of behavior/interactions/console-errors after code changes. NOT for pixel-perfect visual diffing.
+description: |
+  Verification-only MCP — operations (navigate / click / fill / press_key / select_option) belong to agent-browser, paired via shared Chrome CDP (default :9223). Use this MCP only for assertions, console / network checks, semantic state, inspection, screenshots, and run_task.
+  Auto-invoke when Stop hook injects "[auto-verify]", or when user explicitly requests verification of behavior / interactions / console errors after code changes.
+  NOT for pixel-perfect visual diffing.
 ---
 
 # Browser Verifier (Playwright + Task Runtime)
