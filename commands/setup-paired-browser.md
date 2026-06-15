@@ -2,7 +2,9 @@
 description: Interactive setup wizard — pair browser-verifier with agent-browser via shared Chrome CDP
 ---
 
-browser-verifier ↔ agent-browser 페어링을 처음 셋업하는 인터랙티브 가이드. 4개 질문을 **순서대로** 묻고 (한 번에 묶지 X), 답변에 따라 설치/설정/검증까지 진행합니다.
+browser-verifier ↔ agent-browser 페어링을 처음 셋업하는 인터랙티브 가이드. 3개 질문을 **순서대로** 묻고 (한 번에 묶지 X), 답변에 따라 설치/설정/검증까지 진행합니다.
+
+> 브라우저 사용 규칙(역할 분리)은 MCP 서버의 `instructions`로 세션 시작 시 자동 주입됩니다. 별도 CLAUDE.md 작성이 필요 없습니다.
 
 도구는 `AskUserQuestion`을 사용하세요. 답변을 받기 전엔 다음 단계로 가지 마세요.
 
@@ -53,21 +55,6 @@ C를 고르면 추가로 자유 입력 받기 — 1~65535 사이 숫자.
 
 ---
 
-## Q4 — CLAUDE.md 룰 위치
-
-```
-질문: 브라우저 사용 규칙(CLAUDE.md)을 어디에 작성할까요?
-옵션:
-  P. 프로젝트 (./CLAUDE.md) — 이 프로젝트만
-  G. 글로벌 (~/.claude/CLAUDE.md) — 모든 프로젝트
-  B. 둘 다
-  N. 안 만듦
-```
-
-**저장**: `RULE = P | G | B | N`
-
----
-
 ## 실행 단계 (모든 답변 수집 후)
 
 ### Step 1 — agent-browser 설치
@@ -96,20 +83,7 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/launch-chrome.sh" {{PORT}}
 
 스크립트 출력을 그대로 보고. 실패하면 후속 step 진행하지 말고 사용자에게 문제 보고.
 
-### Step 3 — CLAUDE.md 작성
-
-템플릿 경로: `${CLAUDE_PLUGIN_ROOT}/templates/CLAUDE.md.template`
-
-템플릿 내용에서 `{{PORT}}`를 사용자가 고른 PORT로 모두 치환한 뒤 다음 위치에 작성:
-
-- `RULE = P`: `./CLAUDE.md`
-- `RULE = G`: `~/.claude/CLAUDE.md`
-- `RULE = B`: 둘 다
-- `RULE = N`: skip
-
-이미 파일이 존재하면 **덮어쓰지 말고** 사용자에게 한 줄로 확인 받기.
-
-### Step 4 — 검증 (best-effort)
+### Step 3 — 검증 (best-effort)
 
 `browser_setup({ cdpPort: <PORT> })`로 연결 확인.
 
@@ -127,7 +101,6 @@ dev server 포트를 사용자가 안 알려줬으니 인자 생략 (auto-detect
 | agent-browser | 설치 결과 (또는 skip) |
 | CDP 포트 | {{PORT}} |
 | Chrome | ✓ Running on :{{PORT}} 또는 ❌ |
-| CLAUDE.md | 작성된 파일 경로 (또는 skip) |
 | MCP 연결 | ✓ 성공 또는 ⚠️ dev server 안 떠있음 |
 
 마지막 줄에 다음 안내:

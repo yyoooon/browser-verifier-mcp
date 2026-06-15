@@ -4,13 +4,29 @@ Claude Code 같은 MCP 클라이언트에서 동작하는 **결정적 브라우�
 
 LLM에게 "WHAT을 검증할지"만 시키고, "HOW"(hydration / retry / 안정화)는 runtime이 처리한다.
 
-> **AI / 브라우저 자동화 / MCP를 처음 다룬다면** → [`docs/concepts.md`](./docs/concepts.md) 부터 읽으면 됨. 이 프로젝트가 "왜" 이런 모양인지 개념부터 설명함.
+> **AI / 브라우저 자동화 / MCP를 처음 다룬다면** → 난이도순으로 ① 가장 쉬운 [`docs/쉽게-이해하기.md`](./docs/쉽게-이해하기.md)(채점 비유) → ② 왜/누구/무엇 정리한 [`docs/이-MCP-소개.md`](./docs/이-MCP-소개.md) → ③ 검증 내부 4단계 [`docs/browser_verify-내부동작.md`](./docs/browser_verify-내부동작.md) → ④ 설계 개념 [`docs/concepts.md`](./docs/concepts.md).
 
 ---
 
 ## 한 줄 정의
 
 > **내가 코드 고친 후 브라우저에서 직접 확인하는 일을 Claude가 대신 하게 해주는 플러그인.**
+
+### 쉽게 말하면 — "자동 채점기"
+
+검증이란 "이거 잘 됐나?"에 ✅/❌를 매기는 일. 그 **채점을 누가 하느냐**가 이 도구의 정체성이다.
+
+- **Playwright MCP = 눈으로 채점하는 조교** — 화면(접근성 트리)을 **통째로** AI한테 주면, AI가 읽고 "맞는 것 같다" 판단. → 유연하지만 결과가 흔들리고, 토큰을 많이 씀.
+- **browser-verifier = 자동 채점기(OMR)** — "무엇을 볼지"(selector·기대값)만 정하면, 코드가 **정해진 칸만** 읽어 기계적으로 대조. → 빠르고, 매번 같은 결과.
+
+즉 **AI는 "WHAT"(무엇을 검증할지)만 정하고, "HOW"(읽기·대기·비교·판정)는 코드가** 한다. 그래서 결과가 흔들리지 않는다(deterministic). 이 차이가 둘로 갈라진다:
+
+|              | browser-verifier (자동 채점기) | Playwright MCP (눈 채점 조교) |
+| ------------ | ------------------------------ | ----------------------------- |
+| **누가 판정** | 코드가 기계적으로 → 항상 같음   | AI가 눈으로 → 흔들릴 수 있음   |
+| **얼마나 읽나** | 필요한 값만 콕 → 빠름·저토큰  | 트리 통째로 → 느림·고토큰      |
+
+> 더 쉬운 비유 풀이는 [`docs/쉽게-이해하기.md`](./docs/쉽게-이해하기.md), 왜/누구/무엇 전체 개요는 [`docs/이-MCP-소개.md`](./docs/이-MCP-소개.md).
 
 ---
 
@@ -111,6 +127,54 @@ LLM이 raw DOM을 매번 직접 살피게 하면 timing 민감 / flaky / 추론 
 - Console / Network noise 자동 필터 (HMR, CareHubBridge 등)
 
 **LLM은 "WHAT을 검증할지"만 결정**하고, **"HOW"(hydration / retry / 안정화)는 runtime이 처리**한다. 자세히는 [`docs/concepts.md`](./docs/concepts.md).
+
+### `browser_verify` 한 콜이 안에서 도는 순서
+
+검증 요청 하나가 들어오면 **① 추출 → ② 대기 → ③ 조회 → ④ 비교** 4단계로 처리한다:
+
+1. **상태 한 번 추출** — 화면 공통정보(route · modal · errors · loading…)를 사진 1장처럼 한 번에 긁어둠. 여러 검사가 이걸 재활용(매번 다시 안 봄).
+2. **필요하면 대기** — `loaded` 검사가 있는데 아직 로딩 중이면 0.15초씩 최대 `timeoutMs`까지 폴링. React 렌더 끝나기 전에 검사해서 생기는 flaky를 **코드가** 막음.
+3. **DOM 한 콜로 조회** — `computed_style` · `class_present` 같은 UI 검사를 모아서 브라우저에 **딱 한 번** 질의(왕복 최소화 → 빠르고 저토큰).
+4. **type별 기계 비교** — 검사마다 종류에 맞는 비교 코드로 `expected == observed` 대조. 하나라도 ❌면 전체 FAIL.
+
+→ 이래서 **빠르고(왕복 적음) + 안 흔들리고(기계 비교) + flaky 없는(자동 대기)** 검증이 된다. 단계별 코드까지 보려면 [`docs/browser_verify-내부동작.md`](./docs/browser_verify-내부동작.md).
+
+---
+
+## Playwright MCP · agent-browser · 직접 코딩과 뭐가 다른가
+
+브라우저에서 "이거 잘 됐나" 확인하는 걸 AI한테 시키는 방법은 여러 가지. 같은 결과를 내지만 **AI한테 얼마나 떠넘기느냐**가 다름.
+
+먼저 용어 두 개만:
+- **selector** — 페이지에서 특정 요소(버튼·입력칸 등)를 콕 집는 주소. 예: `버튼[data-slot=submit]`
+- **flaky** — 같은 걸 돌려도 어떤 땐 통과, 어떤 땐 실패하는 불안정한 상태
+
+| 질문 | **Playwright MCP** | **agent-browser** | **AI가 매번 직접 코딩** | **browser-verifier** |
+|---|---|---|---|---|
+| **AI가 실제로 뭘 하나?** | 페이지 목록(트리) 전체를 받아 AI가 읽고 통과/실패 판단 | 트리·스크린샷을 AI가 읽고 판단 (ref·CLI로 조작) | Playwright 코드를 그때그때 새로 짜고 → 실행 → 결과 해석 | "이 selector의 이 값을 확인해"라고 **지정만**. 확인은 미리 만든 코드가 함 |
+| **확인하는 코드는 누가 만드나?** | 없음 (AI 판단) | 없음 (AI 판단) | AI가 매번 새로 작성하고 버림 | 이미 만들어져 고정. AI가 안 짬 |
+| **"잠깐 기다렸다 확인"은?** | AI가 알아서 (놓치면 flaky) | CLI wait 명령, AI가 판단해 호출 | 코드에 매번 직접 넣어야 함 | 코드가 항상 알아서 기다림 |
+| **같은 검증 두 번 하면 결과 같나?** | AI 판단이라 흔들림 | AI 판단이라 흔들림 | 매번 코드 달라서 **제일 들쑥날쑥** | **항상 같은 결과** |
+| **한 번 돌릴 때 비용** | 트리 전체 읽어 무거움 | 트리·스크린샷 읽어 무거움 (실행은 Rust라 빠름) | 코드 매번 생성해 무거움 | 확인할 값만 봐서 가벼움 |
+| **정확한 값(CSS px·색) 판정?** | △ 트리에 값 거의 없음 | △ 똑같이 눈대중 (트리에 값 없음) | ✅ 가능 (직접 짜야) | ✅ 코드가 정밀 비교 |
+| **브라우저 폭** | Chromium·WebKit·Firefox | Chromium·**Safari·Lightpanda** | (Playwright와 같음) | **Chromium만** (CDP attach) |
+| **다음에 또 쓸 수 있나?** | 안 됨 | 안 됨 (CLI 1회성) | 안 됨 (코드 버림) | 저장해 똑같이 반복 |
+| **어디에 잘 맞나?** | 사이트 탐색 | 탐색·멀티브라우저·Vision 시각확인 | 한 번만 할 특이 조작 | 코드 고친 뒤 **결정적 회귀 검증** |
+
+> **agent-browser는?** Playwright MCP와 **같은 "AI 판정" 계열**이에요 (트리·스크린샷을 AI가 읽고 판단). 차별점은 **Rust CLI(빠른 실행)·멀티 브라우저(Safari·Lightpanda)·Vision 시각 확인**. 단 **CSS px·색 같은 정밀 값은 접근성 트리에 안 나와서** 똑같이 눈대중이라, *"버튼이 작동하나"* 같은 유무 판단엔 강해도 *"마진이 정확히 16px인가"* 정밀 판단엔 약해요. 그 값을 코드로 정밀 비교하는 건 browser-verifier뿐.
+
+### 한눈에
+
+- **Playwright MCP · agent-browser** → AI가 *읽기 + 판단*까지 다 함 (트리·스크린샷). 무겁고, 판단이라 흔들림. (agent-browser는 Rust 실행·멀티브라우저·Vision이 강점)
+- **AI 직접 코딩** → AI가 *코드 작성 + 실행 + 판단*까지 다 함. 매번 코드가 달라져서 **제일 불안정**.
+- **browser-verifier** → AI는 *무엇을 볼지*만, 기다림·재시도·합격판정은 **고정된 코드**가 함. 그래서 가볍고, 매번 같은 결과.
+
+특히 **"AI가 매번 직접 코딩"**의 함정을 콕 집으면:
+- 같은 검증인데 실행할 때마다 코드가 미묘하게 달라짐 → 어제 통과한 게 오늘 깨짐
+- 기다리는 처리를 매번 기억해서 넣어야 함 → 한 번 빼먹으면 flaky
+- 검증 끝나면 코드는 버려짐 → 쌓이지 않음
+
+browser-verifier는 이 *"매번 새로 짜는"* 부분을 **이미 검증된 코드로 고정**해두고, AI한테는 *"이 selector의 이 값을 봐"* 정도만 시킴.
 
 ---
 
@@ -226,7 +290,9 @@ alias chrome-debug='/Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chro
 /browser-verifier:setup-paired-browser
 ```
 
-→ 4가지 (사용 모드 · agent-browser 설치 위치 · CDP 포트 · CLAUDE.md 룰 위치)를 물어보고 설치/launch/룰 작성/검증까지 자동 진행.
+→ 3가지 (사용 모드 · agent-browser 설치 위치 · CDP 포트)를 물어보고 설치/launch/검증까지 자동 진행.
+
+> 조작/검증 역할 분리 규칙은 MCP 서버의 `instructions`로 세션 시작 시 자동 주입됨 (별도 CLAUDE.md 작성 불필요).
 
 ---
 
@@ -270,9 +336,10 @@ LLM 보고:
 - `browser_is_visible({ selector })` — DOM + clientRect + computed style 가시성.
 
 ### Verification
-- `browser_verify({ checks })` — 한 콜에 다중 **assertion**. 8 state + 3 style check 종류.
+- `browser_verify({ checks })` — 한 콜에 다중 **assertion**. 12 check 종류 (8 state + 3 style + figma_spec).
   - state: `primary_cta`, `no_errors`, `loaded`, `route`, `modal_open`, `modal_closed`, `heading_present`, `input_count`
   - style (batched DOM): `computed_style`, `class_present`, `class_absent`
+  - figma: `figma_spec` — spec 파일/객체 1개로 타이포·스타일·토큰·hover/focus/active 상태를 한 번에 검증 (아래 [Figma 검증](#figma--tailwind-검증) 참고).
   - **관찰만** 필요하면 `browser_inspect` (위, expected 불필요).
 - `browser_check_console({ level?, clear? })` — 콘솔 버퍼 (노이즈 자동 필터).
 - `browser_check_network({ status?, urlContains? })` — 네트워크 버퍼 (default: errors).
@@ -364,7 +431,34 @@ browser_run_task({ name: "performLogin", args: { email: "...", password: "..." }
 
 ## Figma → Tailwind 검증
 
-디자인 spec 적용 후 결정적 회귀 검증:
+### 권장 — `figma_spec` check 한 줄 (v0.6.0)
+
+Figma 토큰을 표준 JSON(`.figma-specs/<name>.figma-spec.json`)으로 추출해두면, **check 한 개**로 타이포·스타일·토큰·인터랙션 상태를 한 번에 검증:
+
+```
+browser_verify({
+  checks: [
+    { type: "loaded" },
+    { type: "no_errors" },
+    { type: "figma_spec", spec: ".figma-specs/notice-header.figma-spec.json" }
+  ]
+})
+```
+
+`figma_spec` 한 개가 자동으로 해주는 것:
+
+- **타이포** — `fontSize` / `fontWeight` / `lineHeight` / `letterSpacing` / `fontFamily` 정확 비교
+- **임의 스타일 prop** — 색·보더·라운드·패딩·간격 등 (hex → rgb 자동 정규화)
+- **인터랙션 상태** — target별 `rest` / `hover` / `focus` / `active`를 Playwright 네이티브 입력으로 발동해 측정 (측정 직전 transition/animation을 0초로 강제 → 중간색 방지)
+- **토큰 사용 검증** — `target.tokens[]`: 컴파일된 색이 맞아도 raw hex(`bg-[#18181b]`)로 박은 케이스를 classList로 잡아냄 (`[token-usage]`)
+- **토큰 선언 검증** — `spec.cssVariables[]`: `:root`에 해당 CSS 변수가 없으면 fail — Figma엔 있는데 프로젝트에 없는 토큰 감지 (`[token-declared]`)
+- **커버리지 가드** — 필수 카테고리(color / border / typography / spacing)가 spec에서 누락되면 `[spec-coverage]` 경고 (`spec.strict=true`면 fail)
+
+spec 작성 표준·selector/state 규칙·OKLCH 함정·토큰 미선언 시 행동 규약 → [`skills/verify/references/figma-spec-workflow.md`](./skills/verify/references/figma-spec-workflow.md).
+
+### 저수준 — 개별 check 직접 나열
+
+spec 없이 1~2개만 빠르게 확인할 땐 개별 check로도 가능:
 
 ```
 browser_verify({
@@ -394,7 +488,8 @@ browser_verify({
 - [`skills/verify/references/tier-selection.md`](./skills/verify/references/tier-selection.md) — Light vs Full path
 - [`skills/verify/references/category-selection.md`](./skills/verify/references/category-selection.md) — diff → 검증 카테고리
 - [`skills/verify/references/full-path-brief.md`](./skills/verify/references/full-path-brief.md) — Subagent dispatch
-- [`skills/verify/references/figma-tailwind-check.md`](./skills/verify/references/figma-tailwind-check.md) — Figma 검증
+- [`skills/verify/references/figma-spec-workflow.md`](./skills/verify/references/figma-spec-workflow.md) — `figma_spec` 워크플로 (spec 작성·state·토큰·커버리지)
+- [`skills/verify/references/figma-tailwind-check.md`](./skills/verify/references/figma-tailwind-check.md) — Figma → Tailwind 저수준 검증
 - [`skills/verify/references/token-check.md`](./skills/verify/references/token-check.md) — 토큰 적용 검사
 
 ---
@@ -403,14 +498,15 @@ browser_verify({
 
 ✅ 결정적으로 잡힘:
 - 잘못된 Tailwind 클래스 / spacing / font-weight
-- 토큰 적용 여부 (classList + computed)
+- 토큰 적용 여부 (classList + computed) / 토큰 미선언 (`figma_spec`)
+- hover / focus / active 상태의 컴파일된 값 (`figma_spec`, transition 0초 강제)
 - 라우트 변경 / 모달 열림-닫힘
 - console / network 에러
 - React 컨트롤드 input 채우기 (native setter fallback)
 
 ❌ 못 잡음 (별도 도구 필요):
 - 1-2px pixel-perfect 회귀 → Percy / Chromatic
-- hover / focus / 다크모드 상태 매칭
+- 다크모드 자동 매칭 (모드별 spec 따로 작성하면 가능)
 - 디자인의 주관적 "느낌"
 
 ---
@@ -426,6 +522,8 @@ browser_verify({
 - [`docs/refactor-phase-5.md`](./docs/refactor-phase-5.md) — Declarative JSON tasks
 - [`docs/refactor-phase-6.md`](./docs/refactor-phase-6.md) — Surface narrowing (14 도구)
 - [`docs/refactor-phase-7.md`](./docs/refactor-phase-7.md) — Style verification checks
+- [`docs/refactor-phase-8.md`](./docs/refactor-phase-8.md) — Interaction primitives (task ops)
+- [`docs/refactor-phase-9.md`](./docs/refactor-phase-9.md) — Plugin distribution (two-line install)
 
 ---
 

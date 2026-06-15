@@ -17,7 +17,8 @@ import { definition as inspectDef, handler as inspectHandler, } from "./tools/in
 import { loadDefinition as tasksLoadDef, listDefinition as tasksListDef, runDefinition as tasksRunDef, loadHandler as tasksLoadHandler, listHandler as tasksListHandler, runHandler as tasksRunHandler, } from "./tools/tasks.js";
 import { loadTasksFromFile } from "./runtime/tasks/loader.js";
 import { setTasks } from "./runtime/tasks/registry.js";
-const server = new Server({ name: "browser-verifier", version: "0.2.0" }, { capabilities: { tools: {} } });
+import { BROWSER_RULES } from "./instructions.js";
+const server = new Server({ name: "browser-verifier", version: "0.2.0" }, { capabilities: { tools: {} }, instructions: BROWSER_RULES });
 const tools = [
     setupDef,
     tabListDef,
