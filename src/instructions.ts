@@ -18,10 +18,12 @@ Use \`browser-verifier\` (this MCP) for:
 - semantic state checks (\`browser_semantic_state\`, \`browser_inspect\`)
 - console verification (\`browser_check_console\`)
 - network verification (\`browser_check_network\`)
-- visual regression (\`browser_sentinel_save\`)
+- verification sentinel (\`browser_sentinel_save\` — marks the current diff as verified so the Stop hook does not re-trigger)
 - repeated verification workflows (\`browser_run_task\`)
 
 ## Decision Rules
+
+Before starting ANY verification cycle — whether the user asked ("확인해줘" / "검증해줘" / "잘 됐는지 봐줘") or the Stop hook injected "[auto-verify]" — invoke the \`browser-verifier:verify\` skill via the Skill tool FIRST. The skill defines the cycle (tier selection, skip gate, sentinel, reporting format); do not run ad-hoc verification without it.
 
 When the user asks whether something works → browser-verifier.
 When the user asks to navigate, interact, or explore → agent-browser.

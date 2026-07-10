@@ -101,5 +101,6 @@ Subagent #3 → 여전히 FAIL
 에스컬레이션:
   - 발견 issues / 시도 2건 요약 / 추측 root cause
   - 코드는 마지막 수정 유지 (revert X)
-  - sentinel 기록 X (사용자 추가 수정 시 재검증)
+  - sentinel 기록 O — 사용자에게 이미 보고했으므로 같은 diff로 Stop hook이
+    재트리거되면 무한 루프. 코드를 더 고치면 hash가 바뀌어 자연히 재검증됨.
 ```

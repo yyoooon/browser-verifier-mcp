@@ -1,9 +1,8 @@
 ---
-name: browser-verifier
+name: verify
 description: |
-  Verification-only MCP — operations (navigate / click / fill / press_key / select_option) belong to agent-browser, paired via shared Chrome CDP (default :9223). Use this MCP only for assertions, console / network checks, semantic state, inspection, screenshots, and run_task.
-  Auto-invoke when Stop hook injects "[auto-verify]", or when user explicitly requests verification of behavior / interactions / console errors after code changes.
-  NOT for pixel-perfect visual diffing.
+  Use when verifying code changes in the live browser — behavior, styles, console/network errors, Figma spec conformance — via the browser-verifier MCP. Korean triggers: "확인해줘", "검증해줘", "검증시켜줘", "잘 됐는지 봐줘", "잘 뜨는지 확인해줘", "적용됐는지 봐줘", "깨진 데 없어?", "회귀 검사해줘", "콘솔 에러 봐줘", "시안대로 됐는지 확인해줘". Also auto-invoke whenever the Stop hook injects "[auto-verify]".
+  Verification-only — operations (navigate / click / fill / press_key / select_option) belong to agent-browser, paired via shared Chrome CDP (default :9223). NOT for pixel-perfect visual diffing.
 ---
 
 # Browser Verifier (Playwright + Task Runtime)
@@ -25,7 +24,7 @@ Deterministic verification on top of Chrome 9223 via Playwright `connectOverCDP`
 2. **Repeated flows = tasks; one-off = primitives** — `.browser-verifier/tasks.json`에 등록 후 `browser_run_task({name})`. 1회성은 `browser_verify` 또는 `run_task({steps})` 인라인. 새 task 작성 패턴 → `references/task-workflow.md`.
 3. **`browser_verify` > 여러 `browser_eval`** — assertion은 verify 한 콜로. eval은 verify로 표현 불가능한 ad-hoc에만.
 4. **`browser_check_console` 자동 노이즈 필터** (HMR / Bridge / 다른 워크트리 포트 제거). 사용자가 명시적으로 요청할 때만 실행.
-5. **`browser_sentinel_save`로 마무리** — PASS / wiring-only SKIP 후 항상.
+5. **`browser_sentinel_save`로 마무리** — PASS / wiring-only SKIP / ESCALATION 후 항상. (ESCALATION도 저장 — 사용자에게 이미 보고했으므로 같은 diff로 Stop hook이 재트리거되면 안 됨. 코드를 다시 고치면 hash가 바뀌어 자연히 재검증됨.)
 
 **No pixel-perfect diffing** — token 매칭(classList / computed rgba)은 OK, 1-2px 비교는 영역 밖.
 
@@ -62,6 +61,8 @@ Target: 3-5 MCP calls, < 10s.
 | 스냅샷 1회 (route / CTA / errors / modal) | `semantic_state` |
 | 스타일/텍스트/rect/attr **관찰** (expected 모름, 1차 Figma 비교, 토큰 캡처) | `inspect` |
 | 다중 assertion 한 콜 (expected 확정 후 회귀 가드) | `verify` |
+| 임의 요소 텍스트 확인 (토스트/라벨/셀 값) | `verify`(`text` — contains/equals) |
+| 모달 닫힘 / 토스트 소멸 대기 | `run_task`의 `wait_gone` step |
 | 반복 multi-step flow | `run_task({ name })` |
 | 1회성 mixed (click + wait + verify 연쇄) | `run_task({ steps })` 인라인 |
 | 입력 / 클릭 / 키 / URL 직접 이동 (1회성) | 외부 `agent-browser`로 위임 |
@@ -146,7 +147,7 @@ Dev 서버 미기동 / Chrome 9223 미기동 / 보호 라우트 / Diff > 300줄 
 4. Tier + Category 결정 → 1줄 알림
 5. Light: 메인 직접 3-5 콜 / Full: 서브에이전트 dispatch
 6. PASS → "체크: …" + sentinel
-   FAIL → Fix Loop (systematic-debugging → 수정 → 재검증, 최대 2회) → 막히면 에스컬레이션
+   FAIL → Fix Loop (systematic-debugging → 수정 → 재검증, 최대 2회) → 막히면 에스컬레이션 + sentinel
 ```
 
 ## References (lazy load)

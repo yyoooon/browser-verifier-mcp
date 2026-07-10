@@ -66,8 +66,8 @@ fi
 
 # 5) 검증 트리거: exit 2 + stderr로 prompt 주입
 cat >&2 <<'EOF'
-[auto-verify] 코드 변경이 감지됐습니다. browser-verification 스킬을 invoke해서 검증 사이클을 시작하세요.
+[auto-verify] 코드 변경이 감지됐습니다. Skill 툴로 `browser-verifier:verify` 스킬을 invoke해서 검증 사이클을 시작하세요.
 
-사이클 종료 시 ".claude/.last-verified-hash" 파일에 현재 diff hash를 기록해야 다음 Stop에서 무한 루프가 안 납니다 (스킬 본문의 "Sentinel Management" 섹션 참고).
+사이클 종료(PASS / SKIP / ESCALATION) 시 `browser_sentinel_save`로 ".claude/.last-verified-hash"에 현재 diff hash를 기록해야 다음 Stop에서 무한 루프가 안 납니다.
 EOF
 exit 2
