@@ -157,6 +157,25 @@ className 배열을 넣으면 element.classList에 토큰이 박혀있는지 확
 
 → 결과 메시지 prefix: `[token-usage]`. computed 결과는 맞는데 토큰 className이 없으면 fail.
 
+#### `target.tokens`의 객체 항목 — 토큰 **연결** 검증 (레퍼런스 스와치, 팔레트 불변)
+항목을 문자열 대신 `{ "class", "prop" }` 객체로 넣으면, classList 검사에 더해 **그 토큰이 실제로 화면을 칠하는지**를 검증한다. 같은 부모 아래에 임시 요소(스와치)를 만들어 토큰 클래스만 입히고, 스와치의 computed 값과 실제 요소의 computed 값을 비교:
+
+```json
+{
+  "selector": "[data-testid=cta]",
+  "tokens": [
+    { "class": "bg-primary", "prop": "backgroundColor" },
+    "text-primary-foreground"
+  ]
+}
+```
+
+→ 결과 메시지 prefix: `[token-swatch]`. rgb 값을 spec에 굽지 않으므로 **팔레트가 바뀌어도 spec 수정 불필요** — "토큰→화면 연결"만 본다. cascade 오버라이드 / CSS 변수 미해석 / 잘못된 토큰을 잡는다. 토큰 클래스가 아예 해석 안 되면(스와치가 무스타일 기본값과 동일) 메시지에 힌트가 붙는다.
+
+주의:
+- 토큰이 정리된 프로젝트에서만 의미 있음 — 토큰 없는 프로젝트는 문자열/`style` 값 검증만 사용.
+- `hover:` 같은 pseudo-variant 클래스는 스와치에서 발동 안 됨 — 상태별 시맨틱 토큰 클래스(예: `bg-primary-hover`)를 넣을 것.
+
 #### `spec.cssVariables` — 토큰 **선언** 검증
 `getComputedStyle(:root).getPropertyValue('--xxx')`가 빈 문자열이면 사용처 theme에 미선언 → fail. Figma에는 있는데 프로젝트에 없는 토큰 감지용.
 

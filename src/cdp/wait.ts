@@ -96,6 +96,34 @@ export async function waitForSelector(
   }
 }
 
+// "hidden" also resolves when the element is detached or never existed —
+// exactly the semantics wanted for "modal/toast is gone".
+export async function waitForGone(
+  selector: string,
+  timeoutMs: number = DEFAULT_TIMEOUT_MS,
+): Promise<WaitResult> {
+  const state = await ensureAttached();
+  const t0 = Date.now();
+  try {
+    await state.page
+      .locator(selector)
+      .first()
+      .waitFor({ state: "hidden", timeout: timeoutMs });
+    return {
+      ok: true,
+      elapsedMs: Date.now() - t0,
+      finalValue: true,
+    };
+  } catch (e) {
+    return {
+      ok: false,
+      elapsedMs: Date.now() - t0,
+      finalValue: false,
+      error: `selector "${selector}" still present/visible: ${errorMessage(e)}`,
+    };
+  }
+}
+
 export async function waitForLoad(
   state: "load" | "domcontentloaded" | "networkidle" | "hydrated" = "load",
   timeoutMs: number = DEFAULT_TIMEOUT_MS,

@@ -4,7 +4,7 @@ import { runTask, runInlineSteps } from "../runtime/tasks/runner.js";
 import { ok, fail } from "../lib/result.js";
 export const loadDefinition = {
     name: "browser_load_tasks",
-    description: "Load declarative task definitions from a JSON file (replaces any currently loaded tasks). The file shape is { taskName: { description?, args?, steps: [...] } }. Each step is { op, ...fields } using the same ops as browser_batch (goto/click/fill/navigate/reload/wait_url/wait_text/wait_selector/wait_load/verify/screenshot). String fields support {{argName}} substitution at run time. Returns the list of task names loaded plus any validation warnings.",
+    description: "Load declarative task definitions from a JSON file (replaces any currently loaded tasks). The file shape is { taskName: { description?, args?, steps: [...] } }. Each step is { op, ...fields } using the same ops as browser_run_task (goto/click/fill/navigate/reload/wait_url/wait_text/wait_selector/wait_gone/wait_load/press_key/select_option/verify/screenshot). String fields support {{argName}} substitution at run time. Returns the list of task names loaded plus any validation warnings.",
     inputSchema: {
         type: "object",
         properties: {
@@ -68,7 +68,10 @@ export const runDefinition = {
         "  - wait_url: { pattern, timeoutMs? }  (alias: url) — glob, e.g. '**/dashboard'\n" +
         "  - wait_text: { text, timeoutMs? }\n" +
         "  - wait_selector: { selector, timeoutMs? }\n" +
+        "  - wait_gone: { selector, timeoutMs? }  (waits until the element is hidden or detached — modal closed, toast dismissed)\n" +
         "  - wait_load: { state?: 'load'|'domcontentloaded'|'networkidle'|'hydrated', timeoutMs? }\n" +
+        "  - press_key: { key, selector? }  (Playwright key name, e.g. 'Escape', 'Enter', 'Tab'; with selector, focuses the element first)\n" +
+        "  - select_option: { selector, value? | label? }  (native <select> — pass option value or visible label)\n" +
         "  - verify: { checks: [...] }  (same checks as browser_verify)\n" +
         "  - screenshot: { name?, fullPage?, format?, quality? }\n" +
         "Fields support {{argName}} substitution from args. Both modes return { ok, name, steps: [...], failedAt?, elapsedMs }; inline name is 'inline'.",

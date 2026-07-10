@@ -8,6 +8,7 @@
   "scripts": {
     "dev": "tsx src/server.ts",
     "build": "tsc",
+    "test": "tsx --test src/runtime/verify/figma/*.test.ts src/runtime/tasks/*.test.ts",
     "watch": "tsc --watch",
     "start": "node dist/server.js"
   },

@@ -30,3 +30,13 @@ export interface NavigateResult {
 }
 export declare function navigate(url: string, timeoutMs?: number): Promise<NavigateResult>;
 export declare function reload(): Promise<NavigateResult>;
+export interface ActionResult {
+    ok: boolean;
+    error?: string;
+    elapsedMs: number;
+}
+export declare function pressKey(key: string, selector?: string): Promise<ActionResult>;
+export declare function selectOption(selector: string, option: {
+    value?: string;
+    label?: string;
+}): Promise<ActionResult>;

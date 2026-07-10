@@ -9,7 +9,10 @@ const KNOWN_OPS = new Set([
     "wait_url",
     "wait_text",
     "wait_selector",
+    "wait_gone",
     "wait_load",
+    "press_key",
+    "select_option",
     "verify",
     "screenshot",
 ]);
@@ -105,13 +108,26 @@ function requiredFieldsMissing(step) {
         case "reload":
             return [];
         case "wait_url":
-            return typeof step.pattern === "string" ? [] : ["pattern"];
+            return typeof step.pattern === "string" || typeof step.url === "string"
+                ? []
+                : ["pattern"];
         case "wait_text":
             return typeof step.text === "string" ? [] : ["text"];
         case "wait_selector":
             return typeof step.selector === "string" ? [] : ["selector"];
+        case "wait_gone":
+            return typeof step.selector === "string" ? [] : ["selector"];
         case "wait_load":
             return [];
+        case "press_key":
+            return typeof step.key === "string" ? [] : ["key"];
+        case "select_option":
+            return [
+                ...(typeof step.selector === "string" ? [] : ["selector"]),
+                ...(typeof step.value === "string" || typeof step.label === "string"
+                    ? []
+                    : ["value (or label)"]),
+            ];
         case "verify":
             return Array.isArray(step.checks) ? [] : ["checks"];
         case "screenshot":

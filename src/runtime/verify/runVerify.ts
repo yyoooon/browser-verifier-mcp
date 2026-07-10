@@ -6,16 +6,18 @@ import {
 import { globMatch } from "../../lib/glob.js";
 import type { CheckResult, VerifyCheck, VerifyResult } from "./types.js";
 import { loadSpec, runFigmaSpec } from "./figma/runFigmaSpec.js";
+import { valuesMatch } from "./figma/compare.js";
 
 const DOM_CHECK_TYPES = new Set<VerifyCheck["type"]>([
   "computed_style",
   "class_present",
   "class_absent",
+  "text",
 ]);
 
 interface DomQuery {
   idx: number;
-  kind: "style" | "class";
+  kind: "style" | "class" | "text";
   selector: string;
   prop?: string;
   className?: string;
@@ -26,6 +28,7 @@ interface DomQueryResult {
   found: boolean;
   computed?: string;
   hasClass?: boolean;
+  text?: string;
 }
 
 export async function runVerify(
@@ -62,6 +65,8 @@ export async function runVerify(
         selector: c.selector,
         className: c.className,
       });
+    } else if (c.type === "text") {
+      domQueries.push({ idx, kind: "text", selector: c.selector });
     }
   });
 
@@ -141,6 +146,13 @@ async function runDomQueries(
           hasClass: el.classList.contains(q.className),
         };
       }
+      if (q.kind === "text") {
+        return {
+          idx: q.idx,
+          found: true,
+          text: (el.textContent ?? "").replace(/\s+/g, " ").trim(),
+        };
+      }
       return { idx: q.idx, found: false };
     });
   }, queries);
@@ -153,7 +165,8 @@ function runDomCheck(
   if (
     check.type !== "computed_style" &&
     check.type !== "class_present" &&
-    check.type !== "class_absent"
+    check.type !== "class_absent" &&
+    check.type !== "text"
   ) {
     return { type: check.type, ok: false, message: "internal: not a dom check" };
   }
@@ -166,7 +179,7 @@ function runDomCheck(
   }
   if (check.type === "computed_style") {
     const got = result.computed ?? "";
-    const ok = got === check.expected;
+    const ok = valuesMatch(check.prop, check.expected, got);
     return {
       type: "computed_style",
       ok,
@@ -174,6 +187,36 @@ function runDomCheck(
         ? undefined
         : `${check.prop}: expected "${check.expected}" got "${got}"`,
       observed: got,
+    };
+  }
+  if (check.type === "text") {
+    const got = result.text ?? "";
+    if (check.equals !== undefined) {
+      const ok = got === check.equals.replace(/\s+/g, " ").trim();
+      return {
+        type: "text",
+        ok,
+        message: ok
+          ? undefined
+          : `text of "${check.selector}": expected "${check.equals}" got "${got}"`,
+        observed: got,
+      };
+    }
+    if (check.contains !== undefined) {
+      const ok = got.includes(check.contains.replace(/\s+/g, " ").trim());
+      return {
+        type: "text",
+        ok,
+        message: ok
+          ? undefined
+          : `text of "${check.selector}" does not contain "${check.contains}" (got "${got}")`,
+        observed: got,
+      };
+    }
+    return {
+      type: "text",
+      ok: false,
+      message: "text check needs 'contains' or 'equals'",
     };
   }
   if (check.type === "class_present") {

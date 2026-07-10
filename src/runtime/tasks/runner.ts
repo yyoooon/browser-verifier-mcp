@@ -4,9 +4,12 @@ import {
   clickAndWaitForUrl,
   fillReactInput,
   navigate,
+  pressKey,
   reload,
+  selectOption,
 } from "../../cdp/actions.js";
 import {
+  waitForGone,
   waitForLoad,
   waitForSelector,
   waitForText,
@@ -125,8 +128,17 @@ async function executeStep(step: TaskOp): Promise<unknown> {
       return await waitForText(step.text, step.timeoutMs);
     case "wait_selector":
       return await waitForSelector(step.selector, step.timeoutMs);
+    case "wait_gone":
+      return await waitForGone(step.selector, step.timeoutMs);
     case "wait_load":
       return await waitForLoad(step.state ?? "load", step.timeoutMs);
+    case "press_key":
+      return await pressKey(step.key, step.selector);
+    case "select_option":
+      return await selectOption(step.selector, {
+        value: step.value,
+        label: step.label,
+      });
     case "verify": {
       const state = await ensureAttached();
       return await runVerify(state.page, step.checks);

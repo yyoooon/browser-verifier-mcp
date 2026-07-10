@@ -285,6 +285,55 @@ export async function reload(): Promise<NavigateResult> {
   }
 }
 
+export interface ActionResult {
+  ok: boolean;
+  error?: string;
+  elapsedMs: number;
+}
+
+export async function pressKey(
+  key: string,
+  selector?: string,
+): Promise<ActionResult> {
+  const t0 = Date.now();
+  try {
+    const state = await ensureAttached();
+    if (selector) {
+      await state.page.locator(selector).first().press(key, { timeout: 3000 });
+    } else {
+      await state.page.keyboard.press(key);
+    }
+    return { ok: true, elapsedMs: Date.now() - t0 };
+  } catch (e) {
+    return { ok: false, error: errMsg(e), elapsedMs: Date.now() - t0 };
+  }
+}
+
+export async function selectOption(
+  selector: string,
+  option: { value?: string; label?: string },
+): Promise<ActionResult> {
+  const t0 = Date.now();
+  try {
+    const state = await ensureAttached();
+    const locator = state.page.locator(selector).first();
+    if (option.value !== undefined) {
+      await locator.selectOption({ value: option.value }, { timeout: 3000 });
+    } else if (option.label !== undefined) {
+      await locator.selectOption({ label: option.label }, { timeout: 3000 });
+    } else {
+      return {
+        ok: false,
+        error: "select_option needs 'value' or 'label'",
+        elapsedMs: Date.now() - t0,
+      };
+    }
+    return { ok: true, elapsedMs: Date.now() - t0 };
+  } catch (e) {
+    return { ok: false, error: errMsg(e), elapsedMs: Date.now() - t0 };
+  }
+}
+
 function errMsg(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }

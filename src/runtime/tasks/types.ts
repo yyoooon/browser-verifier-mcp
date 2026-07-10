@@ -14,6 +14,9 @@ export type TaskOp =
   | { op: "wait_url"; pattern?: string; url?: string; timeoutMs?: number }
   | { op: "wait_text"; text: string; timeoutMs?: number }
   | { op: "wait_selector"; selector: string; timeoutMs?: number }
+  | { op: "wait_gone"; selector: string; timeoutMs?: number }
+  | { op: "press_key"; key: string; selector?: string }
+  | { op: "select_option"; selector: string; value?: string; label?: string }
   | {
       op: "wait_load";
       state?: "load" | "domcontentloaded" | "networkidle" | "hydrated";

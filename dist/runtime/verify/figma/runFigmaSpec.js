@@ -1,6 +1,8 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { normalizeExpected } from "./normalize.js";
+import { valuesMatch } from "./compare.js";
+import { partitionTokens } from "./tokens.js";
 import { installTransitionGuard, removeTransitionGuard, } from "./transitionGuard.js";
 import { applyState, resetState } from "./state.js";
 import { checkCoverage, isIgnoredProp } from "./coverage.js";
@@ -55,8 +57,8 @@ async function readRootCssVariables(page, names) {
 async function runTarget(page, target) {
     const state = target.state ?? "rest";
     const expected = flattenExpected(target);
-    const tokens = target.tokens ?? [];
-    if (expected.length === 0 && tokens.length === 0)
+    const { classNames, swatches } = partitionTokens(target.tokens);
+    if (expected.length === 0 && classNames.length === 0)
         return [];
     try {
         await applyState(page, target.selector, state);
@@ -71,8 +73,11 @@ async function runTarget(page, target) {
         ];
     }
     let measured;
+    const measureProps = [
+        ...new Set([...expected.map((e) => e.prop), ...swatches.map((s) => s.prop)]),
+    ];
     try {
-        measured = await measure(page, target.selector, expected.map((e) => e.prop), tokens.length > 0);
+        measured = await measure(page, target.selector, measureProps, classNames.length > 0);
     }
     finally {
         try {
@@ -92,7 +97,7 @@ async function runTarget(page, target) {
         ];
     }
     const out = [];
-    for (const token of tokens) {
+    for (const token of classNames) {
         const ok = measured.classList.includes(token);
         out.push({
             type: "figma_spec",
@@ -109,10 +114,37 @@ async function runTarget(page, target) {
                 },
         });
     }
+    if (swatches.length > 0) {
+        const swatchValues = await measureSwatches(page, target.selector, swatches);
+        swatches.forEach((s, i) => {
+            const elementValue = measured.values[s.prop] ?? "";
+            const sw = swatchValues[i];
+            const ok = valuesMatch(s.prop, sw.value, elementValue);
+            const unresolvedHint = sw.value === sw.defaultValue
+                ? ` (token class may not resolve in this project — swatch computed equals unstyled default)`
+                : "";
+            out.push({
+                type: "figma_spec",
+                ok,
+                message: ok
+                    ? undefined
+                    : `[token-swatch] ${target.selector} ${s.prop}: token "${s.class}" paints "${sw.value}" but element shows "${elementValue}"${unresolvedHint}`,
+                observed: ok
+                    ? undefined
+                    : {
+                        selector: target.selector,
+                        token: s.class,
+                        prop: s.prop,
+                        tokenPaints: sw.value,
+                        elementShows: elementValue,
+                    },
+            });
+        });
+    }
     for (const e of expected) {
         const got = measured.values[e.prop] ?? "";
         const exp = normalizeExpected(e.prop, e.value);
-        const ok = got === exp;
+        const ok = valuesMatch(e.prop, e.value, got);
         out.push({
             type: "figma_spec",
             ok,
@@ -171,6 +203,44 @@ async function measure(page, selector, props, includeClassList) {
         const classList = withClasses ? Array.from(el.classList) : [];
         return { found: true, values, classList };
     }, { sel: selector, ps: props, withClasses: includeClassList });
+}
+// Paints each token class on a throwaway sibling of the target ("reference
+// swatch") and reads the computed prop — the value the token *should* paint,
+// resolved through the same cascade scope (theme container, dark mode, etc.).
+// A control span without the class captures the unstyled default, used to
+// hint when the token class did not resolve at all.
+async function measureSwatches(page, selector, swatches) {
+    // NOTE: no inner function declarations inside evaluate — tsx/esbuild
+    // keepNames injects a __name helper that does not exist in the page.
+    return page.evaluate(({ sel, sw }) => {
+        const el = document.querySelector(sel);
+        const parent = el?.parentElement ?? document.body;
+        return sw.map(({ cls, prop }) => {
+            const control = document.createElement("span");
+            const swatch = document.createElement("span");
+            swatch.className = cls;
+            for (const n of [control, swatch]) {
+                n.style.position = "absolute";
+                n.style.visibility = "hidden";
+                n.style.pointerEvents = "none";
+                parent.appendChild(n);
+            }
+            const kebab = prop.replace(/[A-Z]/g, (m) => "-" + m.toLowerCase());
+            const vals = [];
+            for (const node of [swatch, control]) {
+                const cs = getComputedStyle(node);
+                const csAny = cs;
+                let v = csAny[prop];
+                if (v === undefined || v === "") {
+                    v = cs.getPropertyValue(kebab).trim();
+                }
+                vals.push(v ?? "");
+            }
+            control.remove();
+            swatch.remove();
+            return { value: vals[0], defaultValue: vals[1] };
+        });
+    }, { sel: selector, sw: swatches.map((s) => ({ cls: s.class, prop: s.prop })) });
 }
 function errMsg(e) {
     return e instanceof Error ? e.message : String(e);

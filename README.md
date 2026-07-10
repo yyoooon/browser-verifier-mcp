@@ -336,9 +336,9 @@ LLM 보고:
 - `browser_is_visible({ selector })` — DOM + clientRect + computed style 가시성.
 
 ### Verification
-- `browser_verify({ checks })` — 한 콜에 다중 **assertion**. 12 check 종류 (8 state + 3 style + figma_spec).
+- `browser_verify({ checks })` — 한 콜에 다중 **assertion**. 13 check 종류 (8 state + 4 DOM + figma_spec).
   - state: `primary_cta`, `no_errors`, `loaded`, `route`, `modal_open`, `modal_closed`, `heading_present`, `input_count`
-  - style (batched DOM): `computed_style`, `class_present`, `class_absent`
+  - DOM (batched): `computed_style`, `class_present`, `class_absent`, `text` (임의 요소의 텍스트 contains/equals — 토스트·라벨·셀 값)
   - figma: `figma_spec` — spec 파일/객체 1개로 타이포·스타일·토큰·hover/focus/active 상태를 한 번에 검증 (아래 [Figma 검증](#figma--tailwind-검증) 참고).
   - **관찰만** 필요하면 `browser_inspect` (위, expected 불필요).
 - `browser_check_console({ level?, clear? })` — 콘솔 버퍼 (노이즈 자동 필터).
@@ -423,7 +423,7 @@ LLM이 처음 요청 시 자동 생성 → 사용자가 review + commit (lazy cr
 browser_run_task({ name: "performLogin", args: { email: "...", password: "..." } })
 ```
 
-11 ops: `goto` · `click` · `fill` · `navigate` · `reload` · `wait_url` · `wait_text` · `wait_selector` · `wait_load` · `verify` · `screenshot`. `{{argName}}` 템플릿 치환 + bail-on-error.
+14 ops: `goto` · `click` · `fill` · `navigate` · `reload` · `wait_url` · `wait_text` · `wait_selector` · `wait_gone`(요소 사라짐 대기 — 모달 닫힘/토스트 소멸) · `wait_load` · `press_key`(Escape/Enter 등) · `select_option`(네이티브 select) · `verify` · `screenshot`. `{{argName}}` 템플릿 치환 + bail-on-error.
 
 전체 예시: [`templates/tasks.example.json`](./templates/tasks.example.json).
 
@@ -451,6 +451,8 @@ browser_verify({
 - **임의 스타일 prop** — 색·보더·라운드·패딩·간격 등 (hex → rgb 자동 정규화)
 - **인터랙션 상태** — target별 `rest` / `hover` / `focus` / `active`를 Playwright 네이티브 입력으로 발동해 측정 (측정 직전 transition/animation을 0초로 강제 → 중간색 방지)
 - **토큰 사용 검증** — `target.tokens[]`: 컴파일된 색이 맞아도 raw hex(`bg-[#18181b]`)로 박은 케이스를 classList로 잡아냄 (`[token-usage]`)
+- **토큰 연결 검증 (옵트인)** — `tokens[]` 항목을 `{ "class": "bg-primary", "prop": "backgroundColor" }` 객체로 넣으면 레퍼런스 스와치로 "토큰이 실제 화면을 칠하는지"까지 검증 — rgb를 spec에 굽지 않아 팔레트가 바뀌어도 spec 수정 불필요 (`[token-swatch]`)
+- **비교 정규화** — px는 ±0.5px 허용(DPR/줌 서브픽셀), 색은 공백 무시 + hex→rgb 자동 변환, fontFamily는 따옴표/대소문자/`BlinkMacSystemFont`↔`system-ui` 정규화 — 값이 맞는데 표기 차이로 FAIL 나는 false-fail 제거
 - **토큰 선언 검증** — `spec.cssVariables[]`: `:root`에 해당 CSS 변수가 없으면 fail — Figma엔 있는데 프로젝트에 없는 토큰 감지 (`[token-declared]`)
 - **커버리지 가드** — 필수 카테고리(color / border / typography / spacing)가 spec에서 누락되면 `[spec-coverage]` 경고 (`spec.strict=true`면 fail)
 
