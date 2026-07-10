@@ -36,6 +36,14 @@ export async function attach(port, cdpUrl = CDP_BASE_URL) {
             detachBuffers();
         }
     });
+    // tsx/esbuild keepNames injects a __name helper into function bodies, which
+    // survives Playwright's function serialization — without this polyfill every
+    // page.evaluate/waitForFunction throws ReferenceError under `npm run dev`.
+    // No-op when running the tsc build. Installed for the current document and
+    // (via init script) for subsequent navigations.
+    const NAME_POLYFILL = "globalThis.__name = globalThis.__name || ((f) => f);";
+    await page.addInitScript({ content: NAME_POLYFILL });
+    await page.evaluate(NAME_POLYFILL);
     state = {
         browser,
         context: page.context(),
