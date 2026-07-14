@@ -119,7 +119,7 @@ Figma 디자인을 코드로 옮긴 뒤 "시안대로 됐나"를 check 한 개�
 - **토큰 사용 검증** — 컴파일된 색은 맞아도 토큰 대신 raw hex(`bg-[#18181b]`)로 박은 케이스를 classList로 적발
 - **토큰 선언 검증** — Figma에는 있는데 프로젝트 `:root`에 선언 안 된 CSS 변수 감지
 - **비교 정규화** — px ±0.5 허용(DPR 서브픽셀), hex→rgb 자동 변환, fontFamily 표기 정규화 → "값은 맞는데 표기 차이로 FAIL" 하는 false-fail 제거
-- **커버리지 가드** — 필수 카테고리(color/border/typography/spacing) 누락 시 경고
+- **빠뜨리면 잡아줌 (완전성 검사)** — 스펙에 안 적은 속성은 원래 그냥 넘어간다(그래서 스타일 누락이 생김). 스펙에 `"strict": true`를 켜면 **Figma 값 중 빠진 게 있을 때 실패**하고 "뭘 빠뜨렸는지" 목록으로 알려준다. 안 켜면 경고만. → "Figma에 있는 값을 빼먹고 구현하면 통과가 아니라 실패"
 
 ### 4-4. Task 시스템 — 반복 검증을 굳히기
 
@@ -143,9 +143,9 @@ Figma 디자인을 코드로 옮긴 뒤 "시안대로 됐나"를 check 한 개�
 - **14종 op**: goto · click · fill · navigate · reload · wait_url · wait_text · wait_selector · wait_gone · wait_load · press_key · select_option · verify · screenshot
 - `{{argName}}` 템플릿 치환 + 한 step 실패 시 즉시 중단(bail-on-error)
 - **두 모드**: 파일에 등록된 named task(`run_task({name})`) / 파일 없이 즉석 inline steps(`run_task({steps})`)
-- **lazy creation 패턴**: 처음 요청 시 LLM이 task JSON을 생성 → 사용자가 리뷰·커밋 → 이후 팀 자산으로 축적
+- **저장 위치**: `.browser-verifier/<브랜치이름>/`에 자동 저장. **커밋 안 함**(`.gitignore`에 자동 추가). 그 기능 브랜치를 지우면 세션 시작 때 **자동으로 같이 정리**돼서 레포가 안 지저분해진다.
 
-이게 "AI가 매번 코드를 새로 짜는" 방식과의 결정적 차이 — **검증이 버려지지 않고 쌓인다.**
+이게 "AI가 매번 처음부터 다시 하는" 방식과의 차이 — **만든 검증을 그 작업 동안 재사용한다** (끝나면 자동 정리). 자세한 저장·수명 규칙은 [`skills/verify/references/verification-scratch.md`](./skills/verify/references/verification-scratch.md).
 
 ### 4-5. Claude Code 플러그인 — 두 줄 설치 + 자동 검증
 
@@ -158,8 +158,9 @@ Figma 디자인을 코드로 옮긴 뒤 "시안대로 됐나"를 check 한 개�
 
 - **skill (`verify`)** — "확인해줘", "검증해줘" 같은 자연어에 자동 발동. Light path(3~5콜, 10초 내) / Full path(서브에이전트) 티어 선택, Wiring-only skip gate 등 검증 전략이 정의돼 있음
 - **agents** — verification-planner / browser-executor / systematic-debugger 역할 분담
-- **hooks 2종** —
-  - `SessionStart`: Chrome 디버그 포트가 안 떠 있으면 한 줄 안내
+- **hooks 3종** —
+  - `SessionStart` (Chrome 진단): 디버그 포트가 안 떠 있으면 한 줄 안내
+  - `SessionStart` (정리): `.browser-verifier/`가 있으면 `.gitignore`에 자동 추가 + **지워진 브랜치의 검증 파일을 자동 청소**
   - `Stop`(opt-in): Claude가 응답을 끝낼 때마다 git diff를 해시로 비교 → 검증 대상 코드 변경이 있으면 `[auto-verify]` 신호를 주입해 **자동으로 검증 사이클을 시작**. 직전 검증 해시와 같으면 무동작(중복 방지), `browser_sentinel_save`가 완료 마커를 남겨 무한루프 차단
 - **slash commands** — `/browser-verifier:launch-chrome`(디버그 Chrome 기동), `/browser-verifier:setup-paired-browser`(agent-browser 페어링 마법사), `enable-auto`/`disable-auto`
 
@@ -615,7 +616,7 @@ browser_run_task({
 
 ### 4. 반복 flow를 task로 굳히기
 
-`.browser-verifier/tasks.json`:
+`.browser-verifier/<브랜치이름>/tasks.json` (로컬 저장, 커밋 안 함):
 
 ```json
 {
@@ -633,7 +634,7 @@ browser_run_task({
 }
 ```
 
-LLM이 처음 요청 시 자동 생성 → 사용자가 review + commit (lazy creation 패턴). 이후엔:
+LLM이 처음 요청 시 자동 생성 → 로컬에 저장(커밋 안 함, 브랜치 단위로 관리 — 브랜치 지우면 자동 정리). 이후엔:
 
 ```
 browser_run_task({ name: "performLogin", args: { email: "...", password: "..." } })
@@ -649,14 +650,14 @@ browser_run_task({ name: "performLogin", args: { email: "...", password: "..." }
 
 ### 권장 — `figma_spec` check 한 줄 (v0.6.0)
 
-Figma 토큰을 표준 JSON(`.figma-specs/<name>.figma-spec.json`)으로 추출해두면, **check 한 개**로 타이포·스타일·토큰·인터랙션 상태를 한 번에 검증:
+Figma 토큰을 표준 JSON(`.browser-verifier/<브랜치이름>/figma-specs/<name>.json`)으로 추출해두면, **check 한 개**로 타이포·스타일·토큰·인터랙션 상태를 한 번에 검증:
 
 ```
 browser_verify({
   checks: [
     { type: "loaded" },
     { type: "no_errors" },
-    { type: "figma_spec", spec: ".figma-specs/notice-header.figma-spec.json" }
+    { type: "figma_spec", spec: ".browser-verifier/<브랜치이름>/figma-specs/notice-header.json" }
   ]
 })
 ```
@@ -670,7 +671,7 @@ browser_verify({
 - **토큰 연결 검증 (옵트인)** — `tokens[]` 항목을 `{ "class": "bg-primary", "prop": "backgroundColor" }` 객체로 넣으면 레퍼런스 스와치로 "토큰이 실제 화면을 칠하는지"까지 검증 — rgb를 spec에 굽지 않아 팔레트가 바뀌어도 spec 수정 불필요 (`[token-swatch]`)
 - **비교 정규화** — px는 ±0.5px 허용(DPR/줌 서브픽셀), 색은 공백 무시 + hex→rgb 자동 변환, fontFamily는 따옴표/대소문자/`BlinkMacSystemFont`↔`system-ui` 정규화 — 값이 맞는데 표기 차이로 FAIL 나는 false-fail 제거
 - **토큰 선언 검증** — `spec.cssVariables[]`: `:root`에 해당 CSS 변수가 없으면 fail — Figma엔 있는데 프로젝트에 없는 토큰 감지 (`[token-declared]`)
-- **커버리지 가드** — 필수 카테고리(color / border / typography / spacing)가 spec에서 누락되면 `[spec-coverage]` 경고 (`spec.strict=true`면 fail)
+- **완전성 검사 (빠뜨림 방지)** — `spec.strict=true`면 각 target이 Figma의 **모든 시각 속성**(색·보더·라운드·타이포·간격·그림자 등 ~43개)을 채웠는지 검사 → 빠진 게 있으면 `[spec-completeness]`로 **실패 + 누락 목록**. 안 켜면 카테고리 통째 빠짐만 `[spec-coverage]` 경고. → "Figma 값 빼먹고 구현하면 통과 못 함"
 
 spec 작성 표준·selector/state 규칙·OKLCH 함정·토큰 미선언 시 행동 규약 → [`skills/verify/references/figma-spec-workflow.md`](./skills/verify/references/figma-spec-workflow.md).
 
