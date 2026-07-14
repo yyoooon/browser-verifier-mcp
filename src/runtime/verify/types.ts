@@ -94,7 +94,13 @@ export interface FigmaTarget {
   tokens?: Array<string | FigmaTokenBinding>;
 }
 
-export type FigmaCategory = "color" | "border" | "typography" | "spacing";
+export type FigmaCategory =
+  | "color"
+  | "border"
+  | "typography"
+  | "spacing"
+  | "effect"
+  | "layout";
 
 export interface FigmaSpec {
   name?: string;

@@ -1,43 +1,58 @@
-const COLOR_PROPS = [
-    "backgroundColor",
-    "color",
-    "borderColor",
-    "borderTopColor",
-    "borderRightColor",
-    "borderBottomColor",
-    "borderLeftColor",
-    "outlineColor",
-];
-const BORDER_PROPS = [
-    "borderRadius",
-    "borderTopLeftRadius",
-    "borderTopRightRadius",
-    "borderBottomLeftRadius",
-    "borderBottomRightRadius",
-    "borderWidth",
-    "borderTopWidth",
-    "borderRightWidth",
-    "borderBottomWidth",
-    "borderLeftWidth",
-];
-const TYPOGRAPHY_PROPS = ["fontSize", "fontWeight", "lineHeight"];
-const SPACING_PROPS = [
-    "padding",
-    "paddingTop",
-    "paddingRight",
-    "paddingBottom",
-    "paddingLeft",
-    "gap",
-    "rowGap",
-    "columnGap",
-];
+import { VISUAL_PROPERTY_SET } from "./visual-properties.js";
+// Each VISUAL_PROPERTY_SET prop belongs to exactly one category, so
+// skipCategories can excuse a whole group and the completeness math stays clean.
 const CATEGORY_PROPS = {
-    color: COLOR_PROPS,
-    border: BORDER_PROPS,
-    typography: TYPOGRAPHY_PROPS,
-    spacing: SPACING_PROPS,
+    color: [
+        "color",
+        "backgroundColor",
+        "borderTopColor",
+        "borderRightColor",
+        "borderBottomColor",
+        "borderLeftColor",
+        "outlineColor",
+    ],
+    border: [
+        "borderTopWidth",
+        "borderRightWidth",
+        "borderBottomWidth",
+        "borderLeftWidth",
+        "borderTopStyle",
+        "borderRightStyle",
+        "borderBottomStyle",
+        "borderLeftStyle",
+        "borderTopLeftRadius",
+        "borderTopRightRadius",
+        "borderBottomRightRadius",
+        "borderBottomLeftRadius",
+        "outlineWidth",
+        "outlineStyle",
+        "outlineOffset",
+    ],
+    typography: [
+        "fontFamily",
+        "fontSize",
+        "fontWeight",
+        "fontStyle",
+        "lineHeight",
+        "letterSpacing",
+        "textDecorationLine",
+        "textAlign",
+    ],
+    spacing: [
+        "paddingTop",
+        "paddingRight",
+        "paddingBottom",
+        "paddingLeft",
+        "columnGap",
+        "rowGap",
+    ],
+    effect: ["boxShadow", "opacity"],
+    layout: ["height", "minHeight", "display", "alignItems", "justifyContent"],
 };
-const REQUIRED_CATEGORIES = [
+// Categories nudged (non-strict) / not auto-required beyond these. effect+layout
+// are only enforced under strict completeness — as category warnings they'd be
+// noisy for text/icon targets that legitimately have neither.
+const WARN_CATEGORIES = [
     "color",
     "border",
     "typography",
@@ -59,17 +74,76 @@ const IGNORED_PROPS = new Set([
 export function isIgnoredProp(prop) {
     return IGNORED_PROPS.has(prop);
 }
+/** Props a target actually pins: typography keys + style keys + swatch-token props. */
+function speccedProps(target) {
+    const s = new Set();
+    if (target.typography) {
+        for (const k of Object.keys(target.typography))
+            s.add(k);
+    }
+    if (target.style) {
+        for (const k of Object.keys(target.style))
+            if (!isIgnoredProp(k))
+                s.add(k);
+    }
+    for (const t of target.tokens ?? []) {
+        // Object token { class, prop } is verified via reference swatch → covers prop.
+        // String token is a classList-presence check only → does not cover a prop.
+        if (typeof t !== "string")
+            s.add(t.prop);
+    }
+    return s;
+}
+function skippedProps(skip) {
+    const out = new Set();
+    for (const cat of skip)
+        for (const p of CATEGORY_PROPS[cat])
+            out.add(p);
+    return out;
+}
+export function checkCoverage(spec) {
+    const skip = new Set(spec.skipCategories ?? []);
+    return spec.strict === true
+        ? completenessCheck(spec, skip)
+        : categoryWarning(spec, skip);
+}
+// strict — every target must pin every VISUAL_PROPERTY_SET prop (minus skipped
+// categories). Missing props FAIL, listing exactly what to extract from Figma.
+function completenessCheck(spec, skip) {
+    const skipped = skippedProps(skip);
+    const required = VISUAL_PROPERTY_SET.filter((p) => !skipped.has(p));
+    const out = [];
+    for (const target of spec.targets) {
+        const specced = speccedProps(target);
+        const missing = required.filter((p) => !specced.has(p));
+        if (missing.length === 0)
+            continue;
+        out.push({
+            type: "figma_spec",
+            ok: false,
+            message: `[spec-completeness] "${target.selector}" — ${missing.length} visual prop(s) unspecced: [${missing.join(", ")}]. Extract them from Figma (list even unchanged ones, e.g. boxShadow:"none") or silence a whole group via spec.skipCategories.`,
+            observed: { selector: target.selector, missing },
+        });
+    }
+    return out;
+}
+// non-strict (default) — spec-global heuristic: warn if a whole nudged category
+// has no prop anywhere in the spec. Non-fatal (ok:true).
+function categoryWarning(spec, skip) {
+    const present = categoriesPresent(collectSpecProps(spec));
+    const missing = WARN_CATEGORIES.filter((c) => !skip.has(c) && !present.has(c));
+    return missing.map((cat) => ({
+        type: "figma_spec",
+        ok: true,
+        message: `[spec-coverage] warning: missing required category "${cat}" — no prop from [${CATEGORY_PROPS[cat].slice(0, 5).join(", ")}${CATEGORY_PROPS[cat].length > 5 ? ", ..." : ""}]. Add a prop, set spec.strict for per-target enforcement, or list in spec.skipCategories to silence.`,
+        observed: { category: cat, candidates: CATEGORY_PROPS[cat] },
+    }));
+}
 function collectSpecProps(spec) {
     const props = new Set();
     for (const target of spec.targets) {
-        if (target.typography) {
-            for (const k of Object.keys(target.typography))
-                props.add(k);
-        }
-        if (target.style) {
-            for (const k of Object.keys(target.style))
-                props.add(k);
-        }
+        for (const p of speccedProps(target))
+            props.add(p);
     }
     return props;
 }
@@ -80,20 +154,5 @@ function categoriesPresent(props) {
             found.add(cat);
     }
     return found;
-}
-export function checkCoverage(spec) {
-    const skip = new Set(spec.skipCategories ?? []);
-    const required = REQUIRED_CATEGORIES.filter((c) => !skip.has(c));
-    const present = categoriesPresent(collectSpecProps(spec));
-    const missing = required.filter((c) => !present.has(c));
-    if (missing.length === 0)
-        return [];
-    const strict = spec.strict === true;
-    return missing.map((cat) => ({
-        type: "figma_spec",
-        ok: !strict,
-        message: `[spec-coverage] ${strict ? "missing" : "warning: missing"} required category "${cat}" — no prop from [${CATEGORY_PROPS[cat].slice(0, 5).join(", ")}${CATEGORY_PROPS[cat].length > 5 ? ", ..." : ""}]. ${strict ? "Set spec.strict=false or add a prop." : "Add a prop or list in spec.skipCategories to silence."}`,
-        observed: { category: cat, candidates: CATEGORY_PROPS[cat] },
-    }));
 }
 //# sourceMappingURL=coverage.js.map
