@@ -2,300 +2,193 @@
 
 `figma_spec` check 한 개로 **Figma의 토큰 값이 코드에 그대로 들어가 있고, 브라우저에 실제로 똑같이 렌더링됐는지** 한 번에 검증한다. 컴포넌트뿐 아니라 페이지 레이아웃·이미 존재하는 컴포넌트 조립에도 동일 패턴.
 
-## 0) 표준 prop 카테고리 (spec.style/typography에 무엇을 박을지)
+## 0) 원칙 — Figma의 시각 속성을 **전부** 뽑는다 (누락 = 실패)
 
-Figma 디자인의 모든 속성을 박지 않는다 — spec이 비대해지고 false-fail이 늘어남. **토큰 변경에 민감한 핵심 prop만** 박는 게 운영 표준.
+> ⚠️ 예전 이 문서는 "핵심 prop만 박아라"였다. 그게 스타일 누락의 근원이었다. **뒤집는다: 시각에 영향 주는 속성은 전부 박는다.**
 
-| 카테고리 | 항상 박음 (디폴트) | 컴포넌트 특성에 따라 추가 |
-|---|---|---|
-| 색 | `backgroundColor`, `color`, `borderColor` (또는 면별 `borderTopColor` 등) | — |
-| 테두리 | `borderRadius`, `borderWidth` (또는 면별 `borderTopWidth` 등) | `borderStyle` (점선/실선 변형이 있을 때) |
-| 타이포 | `fontSize`, `fontWeight`, `lineHeight` | `letterSpacing`, `fontFamily` (특수 폰트 쓰는 컴포넌트만) |
-| 간격 | `paddingTop`, `paddingLeft`, `columnGap` | `paddingRight`/`paddingBottom` (비대칭), `rowGap`, `margin` |
-| 사이즈 | — | `width`, `height` (디자인에 명시된 경우만 — 버튼/인풋의 `h-10`, 아이콘 사이즈, 모달 너비 등) |
-| 효과 | — | `boxShadow`, `opacity` (디자인에 명시된 컴포넌트만) |
-| 레이아웃 | — | `display`, `flexDirection`, `overflowX` (레이아웃 컨테이너만) |
+**"이 속성은 안 바뀌니 생략" 금지.** 안 바뀌어도 값을 명시한다 (예: `boxShadow: "none"`, `borderTopWidth: "0px"`, `opacity: "1"`). 빠뜨린 속성은 검증에서 통째로 빠져 **"초록불인데 실제론 안 본 것"** 이 된다.
 
-### 왜 padding/border는 한 면만?
-대부분의 컴포넌트는 대칭 패딩/테두리라 한 면만 박아도 충분. 비대칭 디자인이면 그때만 네 면 모두 박는다.
+대상 = `VISUAL_PROPERTY_SET` (`src/runtime/verify/figma/visual-properties.ts`, ~43개 longhand):
 
-### fontFamily 운영 규칙
-- 사이트가 한 폰트 가족(`Inter`, `Pretendard` 등)만 쓴다면 **컴포넌트별 spec엔 박지 않는다**.
-- 대신 `.figma-specs/_global.figma-spec.json` 같은 **사이트 단위 spec** 한 개를 만들어서 `body { fontFamily: ... }`를 1회만 검증한다.
-- 컴포넌트가 특수 폰트(예: 본문은 Inter, 코드 영역만 monospace)를 쓰는 경우에만 그 컴포넌트 spec에 박는다.
-
-### 검증 안 하는 것 (MCP가 자동으로 무시)
-spec.style에 박아도 MCP가 silently drop:
-
-| prop | 이유 |
+| 그룹 | 속성 |
 |---|---|
-| `transition-*`, `animation-*` | 측정 직전 모든 transition을 `0s !important`로 강제 (`installTransitionGuard`). 검증 대상 아님. |
-| `cursor` | 마우스 포인터, 시각 영향 미미. |
-| `boxSizing` | 구조 영향만, 시각 차이 없음. |
+| color | `color`, `backgroundColor`, `border[Top\|Right\|Bottom\|Left]Color`, `outlineColor` |
+| border | `border[Top\|Right\|Bottom\|Left]Width`, `…Style`, `border[TopLeft\|TopRight\|BottomRight\|BottomLeft]Radius`, `outlineWidth`, `outlineStyle`, `outlineOffset` |
+| typography | `fontFamily`, `fontSize`, `fontWeight`, `fontStyle`, `lineHeight`, `letterSpacing`, `textDecorationLine`, `textAlign` |
+| spacing | `paddingTop`, `paddingRight`, `paddingBottom`, `paddingLeft`, `columnGap`, `rowGap` |
+| effect | `boxShadow`, `opacity` |
+| layout | `height`, `minHeight`, `display`, `alignItems`, `justifyContent` |
 
-→ Figma에서 추출돼도 spec에 박을 필요 없음. 박으면 그냥 무시.
+- `target.typography`에는 5개(`fontSize`/`fontWeight`/`lineHeight`/`letterSpacing`/`fontFamily`), **나머지 전부(`fontStyle`·`textDecorationLine`·`textAlign` 포함)는 `target.style`** 에 박는다. 둘 다 완전성 검사 대상.
+- longhand만 쓴다 — shorthand(`border`, `padding`)는 브라우저마다 직렬화가 달라 비교가 불안정.
 
-## 자동 spec 커버리지 검사 (강제 가드)
+### 검증 안 하는 것 (박아도 MCP가 무시)
+`transition-*`, `animation-*`, `cursor`, `boxSizing` → measure 직전 transition guard로 0s 강제거나 비시각. VISUAL_PROPERTY_SET에 없으니 애초에 안 뽑아도 됨.
 
-위 표만으론 LLM이 spec 작성 시 카테고리를 빼먹을 수 있음. MCP가 자동으로 검사해서 누락 시 결과에 알림:
-
-### 기본 동작 (warn)
-spec.targets 안의 `style` / `typography`에 박힌 prop들을 카테고리별로 자동 분류 → **필수 카테고리(`color` / `border` / `typography` / `spacing`) 중 하나라도 prop이 없으면 `[spec-coverage]` 메시지로 경고** (검증은 통과).
-
+### 의도적으로 한 그룹을 뺄 때
+텍스트만 검증하는 spec 등 특정 그룹이 무의미하면 `spec.skipCategories`로 그룹째 면제 → 그 그룹 속성은 완전성 검사에서 빠진다.
+```json
+{ "skipCategories": ["spacing", "layout", "effect"], "targets": [...] }
 ```
-[spec-coverage] warning: missing required category "border" — no prop from
-[borderRadius, borderTopLeftRadius, ...]. Add a prop or list in
-spec.skipCategories to silence.
-```
+그룹: `color` / `border` / `typography` / `spacing` / `effect` / `layout`.
 
-LLM이 결과를 보고 빠뜨린 카테고리를 인지 → spec 보완.
+## 1) Figma → spec 추출 (메인 세션 · Figma MCP · extractor)
 
-### strict 모드 (fail)
-CI 강제용:
+browser-verifier MCP는 다른 MCP를 직접 호출하지 않는다. **메인 세션(Claude Code)** 이 Figma MCP로 값을 뽑아 표준 JSON으로 저장하면, 이 MCP는 그 파일만 본다. Figma MCP는 사용처 프로젝트 `.mcp.json`에 등록.
 
+### 절대 규칙: 구현 코드를 보지 마라
+값은 항상 **Figma에서** 가져온다. 렌더된 화면·기존 컴포넌트 코드를 "기준선"으로 캡처하지 마라 — **"구현이 구현과 일치"는 버그를 영속화**하는 순환 오류다. Figma가 유일한 진실 출처.
+
+### 추출 절차
+1. **노드별 데이터 수집** (단일 node-id 단위로만, 전체 페이지 호출 금지):
+   - `get_variable_defs` — 바인딩된 변수 전체 (색 hex, radius/spacing rem 등).
+   - `get_metadata` — variant 이름·구조.
+   - `get_design_context` — 레이아웃·타이포·보더·효과 상세.
+2. **값 변환** (Figma → computed 형식). hex/rem은 MCP가 자동 정규화하니 Figma 그대로 박아도 되지만, 나머지는 아래 형식으로:
+
+   | Figma | spec 값 |
+   |---|---|
+   | hex `#4830F2` | `#4830F2` (또는 `rgb(72, 48, 242)`) — MCP가 rgb로 변환 |
+   | hex+opacity `#000000 30%` | `rgba(0, 0, 0, 0.3)` |
+   | rem `1rem` | `16px` |
+   | 없음 / none | `"none"` (boxShadow/outlineStyle 등) / width는 `"0px"` |
+   | `medium` / `semibold` | `"500"` / `"600"` |
+   | opacity 100% / 0% | `"1"` / `"0"` |
+
+   - `outlineColor` CSS 기본은 `currentColor` → **state별 `color` 값과 같게** 다시 계산.
+3. **모든 `VISUAL_PROPERTY_SET` 키를 채운다** — 안 바뀌는 것도 명시.
+4. **토큰 바인딩 기록** — Figma 변수에 바인딩된 속성은 `tokens: [{ "class", "prop" }]`로 기록(raw 값·바인딩 없는 건 제외). 색 토큰이면 swatch 검증(§4-B)까지 걸림.
+5. **완전성 자가검사 (저장 전 필수).** 각 target이 `VISUAL_PROPERTY_SET`(skipCategories 제외)를 **전부** 채웠는지 확인. 하나라도 빠지면 **저장하지 말고 누락 목록과 함께 보고**. "안 바뀌니 생략" 다시 금지.
+6. **`strict: true` 세팅** 후 `<repo>/.figma-specs/<name>.figma-spec.json` 저장. → 이후 MCP가 `[spec-completeness]`로 강제(누락 시 fail).
+
+### 스펙 예시 (state별 = 같은 selector 반복)
 ```json
 {
+  "name": "CtaButton",
+  "figmaUrl": "https://www.figma.com/design/...",
   "strict": true,
-  "targets": [...]
-}
-```
-
-→ 누락 카테고리는 fail. PR이 막힘.
-
-### 의도적으로 한 카테고리를 빼는 경우
-텍스트만 검증하는 spec 등 일부 카테고리가 무의미할 때:
-
-```json
-{
-  "skipCategories": ["spacing", "border"],
-  "targets": [...]
-}
-```
-
-→ 해당 카테고리는 누락 경고 안 띄움.
-
-### 카테고리 → prop 매핑 (MCP 내부)
-| 카테고리 | 포함되는 prop들 |
-|---|---|
-| `color` | backgroundColor, color, borderColor, border\[Top\|Right\|Bottom\|Left\]Color, outlineColor |
-| `border` | borderRadius, border\[Top\|Right\|Bottom\|Left\]\[Width\|...Radius\], borderWidth |
-| `typography` | fontSize, fontWeight, lineHeight |
-| `spacing` | padding, padding\[Top\|Right\|Bottom\|Left\], gap, rowGap, columnGap |
-
-위 카테고리에 속한 prop이 spec에 **한 개라도** 있으면 그 카테고리는 "박혔다"로 간주. (4면 다 박지 않아도 됨)
-
-
-
-## 1) 메인 세션이 Figma MCP로 spec 추출
-
-브라우저-베리파이어 MCP는 다른 MCP를 직접 호출하지 않는다. Figma MCP는 **사용처 프로젝트의 `.mcp.json`** 에 등록한다. 메인 세션(Claude Code)이 Figma MCP로 토큰/메타데이터를 받아 표준 JSON으로 저장하면, 이 MCP는 그 파일만 본다.
-
-표준 위치 권장: `<repo>/.figma-specs/<name>.figma-spec.json`
-
-```json
-{
-  "name": "NoticeManagementHeader",
-  "figmaUrl": "https://www.figma.com/file/...",
   "targets": [
     {
-      "selector": "[data-slot=notice-title]",
+      "selector": "button[data-slot=cta]",
       "state": "rest",
-      "typography": {
-        "fontSize": "24px",
-        "fontWeight": "700",
-        "lineHeight": "32px",
-        "letterSpacing": "-0.4px"
+      "typography": { "fontSize": "16px", "fontWeight": "600", "lineHeight": "24px", "letterSpacing": "0px", "fontFamily": "Pretendard" },
+      "style": {
+        "color": "rgb(255,255,255)", "backgroundColor": "#4830F2",
+        "borderTopColor": "rgba(0,0,0,0)", "borderRightColor": "rgba(0,0,0,0)", "borderBottomColor": "rgba(0,0,0,0)", "borderLeftColor": "rgba(0,0,0,0)",
+        "borderTopWidth": "0px", "borderRightWidth": "0px", "borderBottomWidth": "0px", "borderLeftWidth": "0px",
+        "borderTopStyle": "none", "borderRightStyle": "none", "borderBottomStyle": "none", "borderLeftStyle": "none",
+        "borderTopLeftRadius": "14px", "borderTopRightRadius": "14px", "borderBottomRightRadius": "14px", "borderBottomLeftRadius": "14px",
+        "boxShadow": "none", "opacity": "1",
+        "outlineColor": "rgb(255,255,255)", "outlineWidth": "0px", "outlineStyle": "none", "outlineOffset": "0px",
+        "fontStyle": "normal", "textDecorationLine": "none", "textAlign": "center",
+        "paddingTop": "12px", "paddingRight": "16px", "paddingBottom": "12px", "paddingLeft": "16px",
+        "columnGap": "6px", "rowGap": "6px", "height": "48px", "minHeight": "0px",
+        "display": "inline-flex", "alignItems": "center", "justifyContent": "center"
       },
-      "style": { "color": "#141414" }
-    },
-    {
-      "selector": "button[data-slot=cta]",
-      "state": "hover",
-      "style": { "backgroundColor": "#0050C8" }
-    },
-    {
-      "selector": "button[data-slot=cta]",
-      "state": "active",
-      "style": { "backgroundColor": "#003D9E" }
-    },
-    {
-      "selector": "input[name=email]",
-      "state": "focus",
-      "style": { "borderColor": "#0066FF" }
+      "tokens": [
+        { "class": "bg-button-primary", "prop": "backgroundColor" },
+        "rounded-14"
+      ]
     }
   ]
 }
 ```
 
 ### selector 정하기
-- 가능하면 `data-slot` / `data-testid` 등 안정적 속성 사용
-- 클래스 기반은 Tailwind v4 / arbitrary 값 충돌 가능성 있으니 지양
-- 같은 element를 다른 state로 여러 번 검증할 거면 같은 selector를 여러 target에 반복 명시
+- `data-slot` / `data-testid` 등 **안정적 속성** 사용. 클래스 기반은 Tailwind v4 arbitrary 충돌 위험이라 지양.
+- 같은 element를 여러 state로 검증하려면 **같은 selector를 여러 target에 반복** 명시.
 
 ### state별 의미
 | state | 동작 |
 |---|---|
-| `rest` (기본) | 아무 인터랙션 없이 측정 |
-| `hover` | `page.hover(selector)` 후 측정 |
-| `focus` | `page.focus(selector)` 후 측정 |
-| `active` | hover + `mouse.down()` 유지 상태로 측정 (실제 `:active` 발동) |
+| `rest` (기본) | 인터랙션 없이 측정 |
+| `hover` | `page.hover(selector)` 후 |
+| `focus` | `page.focus(selector)` 후 |
+| `active` | hover + `mouse.down()` 유지 (`:active` 발동) |
 
-각 target 측정 후 자동으로 reset (마우스 복귀 / blur / mouseup).
+각 target 측정 후 자동 reset(마우스 복귀 / blur / mouseup).
 
-### 토큰 검증 옵션 (선택, 시각 검증과 별개)
+## 2) 완전성 검사 (누락 = 실패 엔진)
 
-#### `target.tokens` — 토큰 **사용** 검증
-className 배열을 넣으면 element.classList에 토큰이 박혀있는지 확인. 컴파일된 색이 맞아도 raw hex (`bg-[#18181b]`)로 박은 케이스를 잡아냄.
+MCP가 자동으로 검사한다. `coverage.ts` 기준:
 
-```json
-{
-  "selector": "[data-testid=cta]",
-  "tokens": ["bg-primary", "text-primary-foreground"],
-  "style": { "backgroundColor": "#18181b" }
-}
+### strict 모드 (`spec.strict: true`) — extractor 스펙의 기본
+각 target이 `VISUAL_PROPERTY_SET`(skipCategories 제외)를 전부 채웠는지 검사. **하나라도 빠지면 `[spec-completeness]` FAIL**, 누락 속성을 목록으로 알려준다:
 ```
-
-→ 결과 메시지 prefix: `[token-usage]`. computed 결과는 맞는데 토큰 className이 없으면 fail.
-
-#### `target.tokens`의 객체 항목 — 토큰 **연결** 검증 (레퍼런스 스와치, 팔레트 불변)
-항목을 문자열 대신 `{ "class", "prop" }` 객체로 넣으면, classList 검사에 더해 **그 토큰이 실제로 화면을 칠하는지**를 검증한다. 같은 부모 아래에 임시 요소(스와치)를 만들어 토큰 클래스만 입히고, 스와치의 computed 값과 실제 요소의 computed 값을 비교:
-
-```json
-{
-  "selector": "[data-testid=cta]",
-  "tokens": [
-    { "class": "bg-primary", "prop": "backgroundColor" },
-    "text-primary-foreground"
-  ]
-}
+[spec-completeness] "button[data-slot=cta]" — 2 visual prop(s) unspecced:
+[boxShadow, letterSpacing]. Extract them from Figma (list even unchanged
+ones, e.g. boxShadow:"none") or silence a whole group via spec.skipCategories.
 ```
+→ **Figma 값을 빼먹고 구현하면 통과가 아니라 실패.** 이게 이 워크플로의 핵심 가드.
 
-→ 결과 메시지 prefix: `[token-swatch]`. rgb 값을 spec에 굽지 않으므로 **팔레트가 바뀌어도 spec 수정 불필요** — "토큰→화면 연결"만 본다. cascade 오버라이드 / CSS 변수 미해석 / 잘못된 토큰을 잡는다. 토큰 클래스가 아예 해석 안 되면(스와치가 무스타일 기본값과 동일) 메시지에 힌트가 붙는다.
+### 기본 모드 (non-strict) — 완화된 경고
+`strict` 없으면 spec 전체 기준으로 nudge 카테고리(`color`/`border`/`typography`/`spacing`) 중 통째로 빠진 게 있으면 **`[spec-coverage]` 경고**(검증은 통과). extractor로 만든 스펙은 항상 `strict: true`를 켜라 — 그래야 완전성이 강제된다.
 
-주의:
-- 토큰이 정리된 프로젝트에서만 의미 있음 — 토큰 없는 프로젝트는 문자열/`style` 값 검증만 사용.
-- `hover:` 같은 pseudo-variant 클래스는 스와치에서 발동 안 됨 — 상태별 시맨틱 토큰 클래스(예: `bg-primary-hover`)를 넣을 것.
+### 토큰이 prop을 커버하는 규칙
+`tokens`의 객체 항목 `{ class, prop }`은 그 `prop`을 **swatch 검증으로 커버**한 것으로 쳐서 완전성 검사에서 빠지지 않는다. 문자열 토큰(`"rounded-14"`)은 classList 존재만 보므로 prop 커버로 치지 않는다.
+
+## 3) 토큰 검증 옵션 (시각 검증과 별개)
+
+#### `target.tokens` 문자열 — 토큰 **사용** 검증
+className이 element.classList에 있는지. 컴파일 색이 맞아도 raw hex(`bg-[#18181b]`)로 박은 걸 잡음. 메시지 prefix `[token-usage]`.
+
+#### `target.tokens` 객체 `{class, prop}` — 토큰 **연결** 검증 (레퍼런스 스와치, 팔레트 불변)
+같은 부모에 임시 스와치를 만들어 토큰 클래스만 입히고, 스와치 computed와 실제 요소 computed를 비교. rgb를 spec에 굽지 않아 **팔레트가 바뀌어도 spec 수정 불필요**. 메시지 prefix `[token-swatch]`.
+- 토큰 정리된 프로젝트에서만 의미. `hover:` 같은 pseudo-variant는 스와치에서 발동 안 됨 → 상태별 시맨틱 토큰(`bg-primary-hover`)을 쓸 것.
 
 #### `spec.cssVariables` — 토큰 **선언** 검증
-`getComputedStyle(:root).getPropertyValue('--xxx')`가 빈 문자열이면 사용처 theme에 미선언 → fail. Figma에는 있는데 프로젝트에 없는 토큰 감지용.
+`getComputedStyle(:root).getPropertyValue('--xxx')`가 빈 문자열이면 theme 미선언 → fail. 메시지 prefix `[token-declared]`.
 
-```json
-{
-  "cssVariables": ["--primary", "--input", "--muted-foreground"],
-  "targets": [...]
-}
-```
+### 토큰/완전성 실패 시 행동 규약 (LLM)
+`[token-declared]` · `[spec-completeness]` fail이 섞여 오면 **자동 결정 금지, 사용자에게 물어라**:
+1. theme에 토큰 추가 (Figma 값으로 `--xxx` 정의)
+2. arbitrary 값 유지
+3. 기존 토큰으로 매핑
+4. (완전성) 누락 속성을 Figma에서 추출해 spec에 추가
+5. 무시 / 그룹을 skipCategories로 침묵
 
-→ 결과 메시지 prefix: `[token-declared]`. 변수명은 `--`로 시작하거나 생략 가능 (자동 `--` 붙임).
+## 4) 자동 정규화 / transition 차단
 
-### 토큰 미선언 감지 시 행동 규약 (LLM)
+검증 직전 MCP가 자동 처리:
 
-`figma_spec` 결과에 `[token-declared]` fail이 섞여 오면 **LLM은 즉시 사용자에게 어떻게 처리할지 물어야 한다** — 자동 결정 금지. 보통 4가지 선택지:
-
-1. **사용처 theme에 토큰 추가** (Figma 값으로 `--xxx` 정의) — 디자인 시스템 정합성 최우선
-2. **arbitrary 값 유지** (`bg-[#xxx]` 그대로) — 일회성 컴포넌트, 향후 디자인 변경 가능성 낮음
-3. **기존 다른 토큰으로 매핑** (`bg-primary` 사용, 색은 거의 같음) — 시각적 차이 허용
-4. **무시 / spec에서 제거** — 검증 대상에서 제외
-
-`[token-usage]` fail은 spec이 토큰 사용을 강제하는 거니까, 컴포넌트를 토큰 사용 형태로 고치거나 spec.target.tokens에서 빼는 선택.
-
-## 2) MCP가 받아서 검증
-
-`browser_verify`에 `figma_spec` check 한 줄만 박으면 끝:
-
-```json
-{
-  "checks": [
-    { "type": "loaded" },
-    { "type": "no_errors" },
-    { "type": "figma_spec", "spec": ".figma-specs/notice-header.figma-spec.json" }
-  ]
-}
-```
-
-또는 spec 객체를 그대로 인라인으로 던져도 됨 (작은 검증에 편함):
-
-```json
-{
-  "checks": [
-    {
-      "type": "figma_spec",
-      "spec": {
-        "targets": [
-          {
-            "selector": "h1",
-            "style": { "color": "#141414", "fontSize": "24px" }
-          }
-        ]
-      }
-    }
-  ]
-}
-```
-
-### 동작·스타일 한 콜에 묶기
-LLM이 항상 같은 한 콜에 박도록 한다:
-1. `loaded` — 페이지 로드 완료
-2. `no_errors` — 비주얼 에러 없음
-3. `figma_spec` — 토큰 일치 (스타일)
-
-→ MCP가 결과를 펼쳐 한 응답으로 반환.
-
-## 3) 자동 정규화 / transition 차단
-
-검증 직전 MCP가 자동으로 처리하니 사용자가 신경쓸 필요 없음:
-
-| 입력 (Figma 그대로) | 비교 대상 (브라우저 normalized) |
+| 입력 (Figma) | 비교 대상 (normalized) |
 |---|---|
 | `#D6EAFA` | `rgb(214, 234, 250)` |
-| `#FFFFFF` | `rgb(255, 255, 255)` |
 | `#00000080` (alpha) | `rgba(0, 0, 0, 0.5)` |
-| 그 외 (px, rgb(), oklch() 등) | 그대로 전달 |
+| 그 외 (px, rgb(), oklch()) | 그대로 |
 
-비교는 **정확 일치** (px 오차 허용 X). 1px 차이도 fail. 그래서 spec에는 실제 컴파일 결과를 박아야 한다.
+비교 규칙(0.8.0):
+- **단일 px 값은 ±0.5px 허용** (zoom/DPR sub-pixel 스냅). 예전 "정확 일치"는 옛말.
+- **색은 공백 무시** 비교, `fontFamily`는 따옴표/대소문자 무시 + BlinkMacSystemFont↔system-ui 통일.
+- hover/focus/active 측정 직전 모든 transition/animation을 0s로 강제 → 중간색 방지. 검증 후 자동 제거.
 
-### transition 차단
-hover/focus/active 측정 직전에 `<style>` 인젝트로 모든 transition/animation을 0초로 만든다 → 중간색 측정 방지. 검증 끝나면 자동 제거.
+## 5) Tailwind v4 + OKLCH 함정
 
-## 4) Tailwind v4 + OKLCH 함정
+theme 토큰(`bg-blue-100`)은 `oklch(...)`로 컴파일 → Figma hex로 직접 비교 불가. 해결:
+- **A. arbitrary 값(`bg-[#hex]`)** — spec에 hex 그대로 (rgb 자동 변환).
+- **B. theme 토큰** — 값을 굽지 말고 `tokens: [{class, prop}]` **스와치 검증**을 써라(팔레트 불변). 또는 `browser_inspect`로 현재 컴파일된 `oklch(...)`를 한 번 캡처해 expected에 박는다(토큰 정의 회귀가 잡힘).
 
-theme 토큰(`bg-blue-100`)은 `oklch(...)`로 컴파일됨. Figma의 hex/rgb로는 검증 불가. 두 가지 해결:
-
-**A. 컴포넌트가 arbitrary 값(`bg-[#hex]`)을 쓰는 경우** — spec에 hex 그대로 박으면 됨 (rgb 자동 변환).
-
-**B. 컴포넌트가 theme 토큰을 쓰는 경우** — `browser_inspect`로 한 번 컴퓨티드 캡처:
-
-```json
-{ "targets": { "card": { "selector": "[data-slot=card]", "style": ["backgroundColor"] } } }
-```
-
-결과의 `oklch(...)` 값을 spec의 expected에 박는다 (Figma 원본 색이 아닌, **현재 토큰이 컴파일된 결과**를 박음 — 토큰 정의 회귀가 spec 검증에서 잡힘).
-
-## 5) 잘 잡는 / 못 잡는
+## 6) 잘 잡는 / 못 잡는
 
 ✅ 결정적으로 잡힘
-- 잘못된 토큰 (오타, scale 실수)
-- 토큰 override / 상속 깨짐
-- 타이포 4속성 (fontSize / fontWeight / lineHeight / letterSpacing)
-- 색 / 보더 / 라운드 / 패딩 / 간격
-- hover · focus · active의 실제 컴파일된 값
+- 잘못된 토큰 / override 깨짐 / 상속 깨짐
+- 타이포·색·보더·라운드·패딩·간격
+- hover·focus·active의 실제 컴파일 값
+- **Figma에 있는데 spec/구현에서 빠진 시각 속성 (strict 완전성)**
 
-❌ 못 잡음 (visual diff 도구 영역)
-- 1-2px sub-pixel shift (정확 비교라 fail로 잡히지만 원인 파악은 사람 몫)
-- 폰트 렌더링 OS 차이
-- 이미지 / 아이콘 시각 품질
-- 다크모드 자동 매칭 (각 모드 spec 별도 작성 필요)
+❌ 못 잡음 (visual diff 영역)
+- 1-2px sub-pixel shift(±0.5px는 통과) / 폰트 OS 렌더 차 / 이미지·아이콘 품질 / 다크모드 자동(모드별 spec 별도)
 
-## 6) 권장 사용 흐름
+## 7) 권장 흐름
 
 ```
-[사용자] Figma 컴포넌트 링크 + "구현 후 검증해줘"
+[사용자] Figma 링크 + "구현 후 검증"
    ↓
-[메인 세션] Figma MCP로 토큰 추출 → .figma-specs/<name>.figma-spec.json 저장
+[메인 세션] Figma MCP로 전 속성 추출 → 완전성 자가검사 → strict:true 스펙 저장(.figma-specs/<name>.json)
 [메인 세션] 코드 구현
 [메인 세션] browser_verify({ checks: [loaded, no_errors, figma_spec(<path>)] })
    ↓
-[MCP] 한 응답으로 동작+스타일 검증 결과 펼쳐서 반환
+[MCP] 완전성([spec-completeness]) + 값 일치 + 토큰 검증을 한 응답으로 펼침
    ↓
-실패한 sub-result의 message에 [state] selector prop: expected → got 형태로 어긋난 지점 명시
+빠뜨린 Figma 속성·어긋난 값이 sub-result로 표면화 → 실패
 ```
