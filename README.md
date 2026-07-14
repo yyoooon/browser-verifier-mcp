@@ -1,182 +1,398 @@
-# browser-verifier-mcp
+# browser-verifier-mcp — 처음 보는 동료에게 소개하고, 어떤 질문에도 답하기
 
-Claude Code 같은 MCP 클라이언트에서 동작하는 **결정적 브라우저 검증 서버**. Playwright `connectOverCDP`로 이미 떠 있는 Chrome 9223에 붙어서, 라이브 페이지 상태를 구조화된 JSON으로 확인하고, 다단계 인터랙션을 1콜로 실행한다.
-
-LLM에게 "WHAT을 검증할지"만 시키고, "HOW"(hydration / retry / 안정화)는 runtime이 처리한다.
-
-> **AI / 브라우저 자동화 / MCP를 처음 다룬다면** → 난이도순으로 ① 가장 쉬운 [`docs/쉽게-이해하기.md`](./docs/쉽게-이해하기.md)(채점 비유) → ② 왜/누구/무엇 정리한 [`docs/이-MCP-소개.md`](./docs/이-MCP-소개.md) → ③ 검증 내부 4단계 [`docs/browser_verify-내부동작.md`](./docs/browser_verify-내부동작.md) → ④ 설계 개념 [`docs/concepts.md`](./docs/concepts.md).
-
----
-
-## 한 줄 정의
-
-> **내가 코드 고친 후 브라우저에서 직접 확인하는 일을 Claude가 대신 하게 해주는 플러그인.**
-
-### 쉽게 말하면 — "자동 채점기"
-
-검증이란 "이거 잘 됐나?"에 ✅/❌를 매기는 일. 그 **채점을 누가 하느냐**가 이 도구의 정체성이다.
-
-- **Playwright MCP = 눈으로 채점하는 조교** — 화면(접근성 트리)을 **통째로** AI한테 주면, AI가 읽고 "맞는 것 같다" 판단. → 유연하지만 결과가 흔들리고, 토큰을 많이 씀.
-- **browser-verifier = 자동 채점기(OMR)** — "무엇을 볼지"(selector·기대값)만 정하면, 코드가 **정해진 칸만** 읽어 기계적으로 대조. → 빠르고, 매번 같은 결과.
-
-즉 **AI는 "WHAT"(무엇을 검증할지)만 정하고, "HOW"(읽기·대기·비교·판정)는 코드가** 한다. 그래서 결과가 흔들리지 않는다(deterministic). 이 차이가 둘로 갈라진다:
-
-|              | browser-verifier (자동 채점기) | Playwright MCP (눈 채점 조교) |
-| ------------ | ------------------------------ | ----------------------------- |
-| **누가 판정** | 코드가 기계적으로 → 항상 같음   | AI가 눈으로 → 흔들릴 수 있음   |
-| **얼마나 읽나** | 필요한 값만 콕 → 빠름·저토큰  | 트리 통째로 → 느림·고토큰      |
-
-> 더 쉬운 비유 풀이는 [`docs/쉽게-이해하기.md`](./docs/쉽게-이해하기.md), 왜/누구/무엇 전체 개요는 [`docs/이-MCP-소개.md`](./docs/이-MCP-소개.md).
+> 이 문서 하나로 ① 처음 보는 동료에게 소개하고, ② 소개 후 어떤 질문이 와도 답할 수 있게 만드는 것이 목표.
+> 순서대로 읽으면 "왜 → 무엇 → 어떻게 → 비교 → 예상 질문" 흐름으로 이해가 쌓인다.
+>
+> 설치·셋업·도구 레퍼런스 등 실무 내용은 [예상 질문](#8-예상-질문--답변) 아래 [실무 가이드](#실무-가이드--설치--셋업--레퍼런스)에 있다.
 
 ---
 
-## 어떤 문제를 푸는가
+## 목차
 
-웹 개발하다 보면 매번 반복하는 루프:
-
-```
-1. 코드 수정
-2. 브라우저 새로고침
-3. 그 페이지로 이동
-4. 버튼 눌러보고, 폼 채워보고
-5. "어 잘 되네" / "어 콘솔 에러 떴네"
-6. 다시 코드로
-```
-
-4~5번을 사람이 매번 하는 게 귀찮음. Claude한테 "확인해줘" 시켜도, Claude는 너의 브라우저를 못 봐서 알 수가 없음.
-
-**이 플러그인은 Claude한테 "너의 브라우저를 보는 눈"을 달아준다.** Claude가 직접 페이지 상태를 읽고, 클릭하고, 폼 채우고, 콘솔 에러 검사하고, 결과를 보고함.
-
-### Before / After
-
-```
-[이전]
-너: "방금 바꾼 카드 배경색이 의도대로 적용됐는지 봐줘"
-Claude: "코드상으론 className이 박혀있어 보입니다.
-        실제 적용은 브라우저에서 확인해주세요."  ← Claude는 못 봄
-
-[이후]
-너: "방금 바꾼 카드 배경색이 의도대로 적용됐는지 봐줘"
-Claude: (브라우저 직접 검사)
-       ✅ PASS — 카드 배경 rgb(214, 234, 250) 적용 확인
-       체크: bg-blue-weak 클래스 박힘 / computed bg 일치 / console 0
-```
+1. [30초 소개 (엘리베이터 피치)](#1-30초-소개-엘리베이터-피치)
+2. [왜 필요한가 — 문제 정의](#2-왜-필요한가--문제-정의)
+3. [핵심 설계 철학 — WHAT과 HOW의 분리](#3-핵심-설계-철학--what과-how의-분리)
+4. [무엇을 할 수 있나 — 기능 전체](#4-무엇을-할-수-있나--기능-전체)
+5. [어떻게 구현되어 있나 — 아키텍처](#5-어떻게-구현되어-있나--아키텍처)
+6. [다른 도구와 뭐가 다른가 — 비교](#6-다른-도구와-뭐가-다른가--비교)
+7. [한계 — 못 하는 것](#7-한계--못-하는-것)
+8. [예상 질문 & 답변](#8-예상-질문--답변)
 
 ---
 
-## 잘 쓰는 시나리오
+## 1. 30초 소개 (엘리베이터 피치)
 
-### 1. Figma 디자인 → Tailwind로 옮긴 직후
+> **"코드 고친 뒤 브라우저 가서 눈으로 확인하는 일을, Claude가 대신 — 그것도 매번 똑같은 결과로 — 하게 해주는 MCP 서버입니다.**
+>
+> AI에게 화면을 통째로 주고 '잘 됐는지 봐줘'라고 하면 판단이 매번 흔들리고 토큰도 많이 씁니다. 이 도구는 반대로, AI는 **'무엇을 확인할지'만 지정**하고 실제 확인(요소 읽기, 로딩 대기, 값 비교, 합격 판정)은 **미리 만들어둔 코드가 기계적으로** 합니다. 그래서 결과가 결정적(deterministic)이고, 빠르고, 가볍습니다."
 
-```
-너: "이 카드 컴포넌트 Figma 스펙대로 적용됐어?"
-Claude: ✅ padding 16px / radius 12px / font-weight 500 / bg #d6eafa 일치
-```
-
-### 2. 다단계 인터랙션이 잘 동작하는지
-
-```
-너: "A 배너 텍스트 바꾸고 버튼 누르면 바텀시트 잘 떠?"
-Claude: (page 이동 → 버튼 클릭 → 바텀시트 검증)
-       ✅ 모달 열림 + 헤더 "신규 가입" 확인 + 인풋 3개
-```
-
-### 3. 코드 수정 후 회귀 없는지
-
-```
-너: "방금 변경이 다른 페이지 깨뜨리진 않았어?"
-Claude: ✅ /dashboard / /settings / /profile — console 에러 0
-```
-
-### 4. 반복하는 검증을 task로 굳히기
-
-로그인 → 대시보드 검증을 자주 한다면 한 번 만들어두고 다음부턴:
-
-```
-너: "로그인 task 돌려서 대시보드 확인해줘"
-Claude: (저장된 task 실행, 결정적으로 보고)
-```
-
-매번 같은 검증을 동일한 결과로 돌릴 수 있음.
+**한 단어 비유: 자동 채점기(OMR).** 화면 전체를 AI가 눈으로 읽고 채점하는 게 아니라, "몇 번 칸을 볼지"만 정해주면 기계가 정해진 칸만 읽어 정답지와 대조한다.
 
 ---
 
-## 누구한테 잘 맞나
+## 2. 왜 필요한가 — 문제 정의
 
-✅ **잘 맞는 사람**:
-- React / Next.js 기반 웹앱 개발자
-- Figma → Tailwind 워크플로 자주 쓰는 사람
-- Claude Code로 코드 자주 수정하는 사람
-- 작은 변경에도 회귀 자주 신경 쓰는 사람
+### 2-1. 개발자의 반복 루프
 
-❌ **별로 안 맞는 사람**:
-- 시각 픽셀-정확 회귀가 본업인 사람 (Percy / Chromatic 영역)
-- 비-React 환경 (작동은 하지만 일부 휴리스틱이 React 기반)
-- 브라우저 자동화 자체가 처음이고 셋업 부담이 큰 경우
+웹 개발의 일상은 이 루프의 무한 반복이다:
 
----
+```
+코드 수정 → 브라우저 새로고침 → 해당 페이지로 이동
+→ 버튼 눌러보고 폼 채워보고 → "잘 되네" / "콘솔 에러네" → 다시 코드로
+```
 
-## 내부적으로 어떻게 동작하나 (관심 있으면)
+AI 코딩 도구(Claude Code 등)를 써도 이 루프의 후반부(브라우저 확인)는 여전히 사람 몫이다. AI는 코드는 고쳐주지만 **내 브라우저를 볼 수 없기 때문**이다. "적용됐는지 봐줘"라고 하면 "코드상으로는 맞아 보이니 브라우저에서 확인해주세요"라는 답이 돌아온다.
 
-LLM이 raw DOM을 매번 직접 살피게 하면 timing 민감 / flaky / 추론 비용 큼. 그래서 이 서버는 **결정적 layer**를 사이에 둔다:
+### 2-2. AI에게 그냥 브라우저를 쥐여주면 안 되나?
 
-- **`browser_semantic_state`** — `{ route, modal, primaryCTA, headings, errors, ... }`를 한 번에 추출
-- **`browser_verify`** — 8개 state + 3개 style check를 배치로 평가, `expected vs observed` 구조화
-- **`browser_run_task`** — multi-step flow를 1콜로 실행 (registered task 또는 inline steps)
-- Playwright Locator + auto-retry로 클릭 결정성 확보
-- Console / Network noise 자동 필터 (HMR, CareHubBridge 등)
+가능하다. Playwright MCP 같은 도구가 이미 그렇게 한다. 하지만 **검증(verification)** 용도로는 두 가지 근본 문제가 있다:
 
-**LLM은 "WHAT을 검증할지"만 결정**하고, **"HOW"(hydration / retry / 안정화)는 runtime이 처리**한다. 자세히는 [`docs/concepts.md`](./docs/concepts.md).
+**① LLM은 비결정적이다.** LLM의 본질은 확률적 텍스트 생성이라 같은 화면을 두 번 보여줘도 "잘 됐다" / "에러 있는 것 같다"로 답이 갈릴 수 있다. 검증의 본질은 "PASS냐 FAIL이냐를 명확히 답하기"인데, 판정 주체가 흔들리면 검증이 아니다. 어제 통과한 게 오늘 깨지는 flaky가 도구 차원에서 내장되는 셈이다.
 
-### `browser_verify` 한 콜이 안에서 도는 순서
+**② 화면 전체를 읽는 건 비싸다.** 접근성 트리나 스크린샷을 통째로 AI에게 주면 매번 수천~수만 토큰을 소모하고, 느리다. 확인하고 싶은 건 "카드 배경색이 rgb(214, 234, 250)인가" 하나인데 화면 전체를 읽는 것은 낭비다.
 
-검증 요청 하나가 들어오면 **① 추출 → ② 대기 → ③ 조회 → ④ 비교** 4단계로 처리한다:
+**③ 정밀 값 판정이 불가능하다.** 접근성 트리에는 CSS px·색상 값이 거의 안 나온다. "마진이 정확히 16px인가", "폰트 굵기가 500인가" 같은 판정은 눈대중으로는 못 한다.
 
-1. **상태 한 번 추출** — 화면 공통정보(route · modal · errors · loading…)를 사진 1장처럼 한 번에 긁어둠. 여러 검사가 이걸 재활용(매번 다시 안 봄).
-2. **필요하면 대기** — `loaded` 검사가 있는데 아직 로딩 중이면 0.15초씩 최대 `timeoutMs`까지 폴링. React 렌더 끝나기 전에 검사해서 생기는 flaky를 **코드가** 막음.
-3. **DOM 한 콜로 조회** — `computed_style` · `class_present` 같은 UI 검사를 모아서 브라우저에 **딱 한 번** 질의(왕복 최소화 → 빠르고 저토큰).
-4. **type별 기계 비교** — 검사마다 종류에 맞는 비교 코드로 `expected == observed` 대조. 하나라도 ❌면 전체 FAIL.
+### 2-3. 그래서 이 도구가 하는 일
 
-→ 이래서 **빠르고(왕복 적음) + 안 흔들리고(기계 비교) + flaky 없는(자동 대기)** 검증이 된다. 단계별 코드까지 보려면 [`docs/browser_verify-내부동작.md`](./docs/browser_verify-내부동작.md).
+AI와 브라우저 사이에 **결정적 검증 레이어**를 끼워 넣는다. AI는 "이 selector의 이 값이 이래야 한다"고 지정만 하고, 읽기·대기·비교·판정은 검증된 코드가 수행한다. 결과는 `expected vs observed` 구조화 JSON으로 돌아오고, 같은 검증은 언제 돌려도 같은 결과가 나온다.
 
 ---
 
-## Playwright MCP · agent-browser · 직접 코딩과 뭐가 다른가
+## 3. 핵심 설계 철학 — WHAT과 HOW의 분리
 
-브라우저에서 "이거 잘 됐나" 확인하는 걸 AI한테 시키는 방법은 여러 가지. 같은 결과를 내지만 **AI한테 얼마나 떠넘기느냐**가 다름.
+이 프로젝트의 모든 설계 결정이 이 한 표에서 나온다:
 
-먼저 용어 두 개만:
-- **selector** — 페이지에서 특정 요소(버튼·입력칸 등)를 콕 집는 주소. 예: `버튼[data-slot=submit]`
-- **flaky** — 같은 걸 돌려도 어떤 땐 통과, 어떤 땐 실패하는 불안정한 상태
+| 책임 | 담당 | 예시 |
+|---|---|---|
+| **WHAT** — 무엇을 검증할지 | LLM | "로그인 후 /dashboard로 가야 하고, 콘솔 에러가 없어야 한다" |
+| **HOW** — 어떻게 확인할지 | Runtime (코드) | hydration 대기, 클릭 재시도, 로딩 폴링, 값 정규화·비교, 판정 |
 
-| 질문 | **Playwright MCP** | **agent-browser** | **AI가 매번 직접 코딩** | **browser-verifier** |
+LLM이 잘하는 것(의도 이해, 검증 항목 도출)은 LLM에게, LLM이 못하는 것(타이밍 판단, 정밀 수치 비교, 일관된 판정)은 코드에 맡긴다. **LLM이 비결정성을 일으킬 수 있는 영역에 아예 못 끼어들게 하는 것**이 핵심이다.
+
+이 분리가 만들어내는 세 가지 성질:
+
+- **결정적(deterministic)** — 판정이 기계 비교라 같은 입력이면 항상 같은 출력
+- **저비용** — 필요한 값만 콕 집어 읽으니 토큰·시간이 적게 듦
+- **flaky 없음** — 대기·재시도가 코드에 박혀 있어 타이밍 실패가 재현되지 않음
+
+---
+
+## 4. 무엇을 할 수 있나 — 기능 전체
+
+### 4-1. 15개 도구 (검증 전용)
+
+v0.4.0부터 **검증 전용(verification-only)** 으로 운영한다. 직접 조작 도구(click/fill/navigate)는 제거했고, 조작은 페어 도구 `agent-browser`에 위임한다 (이유는 [Q&A 8-4](#8-4-왜-조작-기능을-제거했나-v040-결정) 참고).
+
+| 분류 | 도구 | 역할 |
+|---|---|---|
+| **Lifecycle** (3) | `browser_setup` | 검증 사이클 시작. Chrome 9223 + dev 서버 탭에 연결 |
+| | `browser_tab_list` | 열린 탭 목록 |
+| | `browser_sentinel_save` | 검증 완료 마커 저장 (자동 검증 무한루프 방지) |
+| **Inspection** (4) | `browser_semantic_state` | 페이지 상태를 한 번에: route / modal / primaryCTA / headings / errors / loading 등 |
+| | `browser_inspect` | selector별 computed style·text·classList·rect·attr **관찰** (기대값 없이 값만 캡처) |
+| | `browser_get_url` | 현재 URL |
+| | `browser_is_visible` | 요소 가시성 (DOM + rect + computed style) |
+| **Verification** (3) | `browser_verify` | 한 콜에 다중 **assertion** — 13종 check |
+| | `browser_check_console` | 콘솔 에러 버퍼 (노이즈 자동 필터) |
+| | `browser_check_network` | 네트워크 실패 버퍼 |
+| **Tasks** (3) | `browser_load_tasks` / `browser_list_tasks` / `browser_run_task` | 다단계 flow를 JSON으로 정의·1콜 실행 |
+| **Escape/Media** (2) | `browser_eval` | 위 도구로 표현 불가능할 때만 raw JS |
+| | `browser_screenshot` | JPEG/PNG 캡처 |
+
+**inspect vs verify 구분이 중요하다:** `inspect`는 "값을 모를 때 관찰"(첫 Figma 비교, 토큰 캡처), `verify`는 "값을 알 때 단언"(회귀 가드). 관찰 → 값 확정 → 검증으로 굳히는 흐름.
+
+### 4-2. `browser_verify` — 13종 check
+
+한 콜에 여러 assertion을 배치로 평가한다:
+
+- **state 계열 (8)** — `route`(glob 매칭), `loaded`(자동 대기), `no_errors`, `modal_open` / `modal_closed`, `primary_cta`, `heading_present`, `input_count`
+- **DOM 계열 (4, 배치 조회)** — `computed_style`(정밀 CSS 값), `class_present` / `class_absent`, `text`(토스트·라벨·셀 값 contains/equals)
+- **figma_spec (1)** — Figma 스펙 JSON 하나로 타이포·스타일·토큰·hover/focus/active 상태를 일괄 검증
+
+### 4-3. Figma → Tailwind 검증 (`figma_spec`)
+
+Figma 디자인을 코드로 옮긴 뒤 "시안대로 됐나"를 check 한 개로 판정한다:
+
+- **타이포** — fontSize / fontWeight / lineHeight / letterSpacing / fontFamily 정확 비교
+- **인터랙션 상태** — hover / focus / active를 Playwright 네이티브 입력으로 실제 발동시켜 측정. 측정 직전 transition·animation을 0초로 강제해 "전환 중간색"을 읽는 오류를 차단
+- **토큰 사용 검증** — 컴파일된 색은 맞아도 토큰 대신 raw hex(`bg-[#18181b]`)로 박은 케이스를 classList로 적발
+- **토큰 선언 검증** — Figma에는 있는데 프로젝트 `:root`에 선언 안 된 CSS 변수 감지
+- **비교 정규화** — px ±0.5 허용(DPR 서브픽셀), hex→rgb 자동 변환, fontFamily 표기 정규화 → "값은 맞는데 표기 차이로 FAIL" 하는 false-fail 제거
+- **커버리지 가드** — 필수 카테고리(color/border/typography/spacing) 누락 시 경고
+
+### 4-4. Task 시스템 — 반복 검증을 굳히기
+
+"로그인 → 대시보드 진입 → 에러 확인" 같은 다단계 flow를 JSON으로 정의해두면 이후엔 1콜로 재실행:
+
+```json
+{
+  "performLogin": {
+    "args": ["email", "password"],
+    "steps": [
+      { "op": "goto", "url": "http://localhost:3000/login" },
+      { "op": "fill", "selector": "input[name=email]", "value": "{{email}}" },
+      { "op": "click", "text": "로그인" },
+      { "op": "wait_url", "pattern": "**/dashboard" },
+      { "op": "verify", "checks": [{ "type": "no_errors" }] }
+    ]
+  }
+}
+```
+
+- **14종 op**: goto · click · fill · navigate · reload · wait_url · wait_text · wait_selector · wait_gone · wait_load · press_key · select_option · verify · screenshot
+- `{{argName}}` 템플릿 치환 + 한 step 실패 시 즉시 중단(bail-on-error)
+- **두 모드**: 파일에 등록된 named task(`run_task({name})`) / 파일 없이 즉석 inline steps(`run_task({steps})`)
+- **lazy creation 패턴**: 처음 요청 시 LLM이 task JSON을 생성 → 사용자가 리뷰·커밋 → 이후 팀 자산으로 축적
+
+이게 "AI가 매번 코드를 새로 짜는" 방식과의 결정적 차이 — **검증이 버려지지 않고 쌓인다.**
+
+### 4-5. Claude Code 플러그인 — 두 줄 설치 + 자동 검증
+
+```
+/plugin marketplace add yyoooon/browser-verifier-mcp
+/plugin install browser-verifier@yyoooon
+```
+
+이 한 번으로 MCP 서버 + skill + agent 3종 + slash command + hook이 전부 자동 배선된다. 구성 요소:
+
+- **skill (`verify`)** — "확인해줘", "검증해줘" 같은 자연어에 자동 발동. Light path(3~5콜, 10초 내) / Full path(서브에이전트) 티어 선택, Wiring-only skip gate 등 검증 전략이 정의돼 있음
+- **agents** — verification-planner / browser-executor / systematic-debugger 역할 분담
+- **hooks 2종** —
+  - `SessionStart`: Chrome 디버그 포트가 안 떠 있으면 한 줄 안내
+  - `Stop`(opt-in): Claude가 응답을 끝낼 때마다 git diff를 해시로 비교 → 검증 대상 코드 변경이 있으면 `[auto-verify]` 신호를 주입해 **자동으로 검증 사이클을 시작**. 직전 검증 해시와 같으면 무동작(중복 방지), `browser_sentinel_save`가 완료 마커를 남겨 무한루프 차단
+- **slash commands** — `/browser-verifier:launch-chrome`(디버그 Chrome 기동), `/browser-verifier:setup-paired-browser`(agent-browser 페어링 마법사), `enable-auto`/`disable-auto`
+
+즉 켜두면 "코드 수정 → 자동으로 브라우저 검증 → PASS/FAIL 보고"가 사람 개입 없이 돈다.
+
+---
+
+## 5. 어떻게 구현되어 있나 — 아키텍처
+
+### 5-1. 4-layer 구조
+
+```
+┌─────────────────────────────────────────────┐
+│  Claude Code (LLM)                          │ ← "이 페이지 검증해줘" (자연어)
+└─────────────────┬───────────────────────────┘
+                  │ MCP (JSON-RPC over stdio)
+┌─────────────────▼───────────────────────────┐
+│  이 프로젝트 (MCP 서버, src/server.ts)       │ ← 15개 도구 노출
+│   ├─ src/tools/*    도구 핸들러 (얇은 어댑터) │
+│   └─ src/runtime/*  실제 로직 (Playwright)   │
+└─────────────────┬───────────────────────────┘
+                  │ Playwright API
+┌─────────────────▼───────────────────────────┐
+│  playwright-core (npm)                      │ ← Locator, 자동 대기, 재시도
+└─────────────────┬───────────────────────────┘
+                  │ CDP (WebSocket)
+┌─────────────────▼───────────────────────────┐
+│  Chrome --remote-debugging-port=9223        │ ← 사용자가 실제로 보는 브라우저
+└─────────────────────────────────────────────┘
+```
+
+세 프로토콜/라이브러리의 관계를 한 줄로: **이 프로젝트는 MCP 서버이고, 내부에서 Playwright를 쓰며, Playwright는 CDP로 Chrome과 통신한다.**
+
+- **MCP (Model Context Protocol)** — Anthropic이 만든 LLM 도구 호출 표준. JSON-RPC 기반. Claude Code가 이 서버를 자식 프로세스로 띄우고 stdio로 대화한다. LLM은 도구 목록(`tools/list`)을 보고 스스로 어떤 도구를 어떤 순서로 쓸지 결정.
+- **Playwright** — Microsoft의 브라우저 자동화 라이브러리. raw CDP 위에 Locator(요소를 "지금의 참조"가 아니라 "조건"으로 표현 — React가 다시 그려도 새 요소를 찾음), 자동 대기, 자동 재시도를 얹어준다.
+- **CDP (Chrome DevTools Protocol)** — Chrome이 외부 프로그램의 조작을 허용하는 WebSocket 채널.
+
+### 5-2. 핵심 진입점 — `connectOverCDP`
+
+```ts
+const browser = await chromium.connectOverCDP("http://127.0.0.1:9223");
+```
+
+Playwright가 새 브라우저를 띄우는 게 아니라, **사용자가 이미 쓰고 있는 Chrome에 붙는다.** 이 선택이 주는 것:
+
+- 로그인·쿠키·세션 상태를 그대로 사용 (검증 때마다 로그인 안 해도 됨)
+- 사용자가 보던 바로 그 페이지를 검증 (환경 불일치 없음)
+- 조작 도구(`agent-browser`)와 같은 Chrome을 공유 → 조작과 검증의 상태 일관성
+
+### 5-3. `browser_verify` 한 콜의 내부 — 4단계
+
+검증 요청 하나가 들어오면 (`src/runtime/verify/runVerify.ts`):
+
+1. **① 상태 한 번 추출** — `extractSemanticState`가 **한 번의 `page.evaluate`** 로 route·modal·errors·loading·headings 등 공통 정보를 스냅샷. 여러 check가 이 한 장을 재활용 → 스냅샷 일관성 보장 + 왕복 최소화
+2. **② 필요하면 대기** — `loaded` check가 있는데 아직 로딩 중이면 0.15초 간격으로 timeout까지 폴링. React 렌더가 끝나기 전에 검사해서 생기는 flaky를 **코드가** 차단
+3. **③ DOM 한 콜로 조회** — `computed_style`·`class_present` 같은 UI check를 전부 모아 브라우저에 **딱 한 번** 질의 (검사 10개 = 전화 1번에 질문 10개)
+4. **④ type별 기계 비교** — check마다 종류에 맞는 비교 함수로 `expected == observed` 대조 (`route`는 glob 매칭, `computed_style`은 정규화 후 문자열 비교 등). 하나라도 ❌면 전체 FAIL, 어떤 항목이 어떻게 다른지 구조화해 반환
+
+### 5-4. 결정성을 확보하는 구체적 기법들
+
+| 기법 | 문제 | 해법 |
+|---|---|---|
+| **Locator + tag-and-retry** | React 리렌더로 클릭 직전 요소가 사라짐(stale) | 요소를 조건으로 참조, 실패 시 다시 찾아 태깅 후 재시도 |
+| **hydration 감지** | Next.js SSR 직후엔 버튼이 보여도 클릭이 안 먹음 | 요소에 React fiber 키(`__reactFiber*`)가 붙었는지 확인 후 클릭 |
+| **React native setter** | React 컨트롤드 input은 단순 value 대입이 무시됨 | native setter로 값 주입 + 이벤트 발화 |
+| **waitPageStable** | 애니메이션·네트워크 진행 중 측정하면 값이 흔들림 | domcontentloaded + networkidle + `getAnimations()` 빈 상태를 함께 대기 |
+| **transition 0초 강제** | hover 색 측정 시 전환 중간색이 읽힘 | 측정 직전 transition/animation을 0초로 오버라이드 |
+| **값 정규화** | `#fff` vs `rgb(255,255,255)`, DPR 서브픽셀 | hex→rgb 변환, px ±0.5 허용, fontFamily 표기 통일 |
+| **노이즈 필터** | HMR·브릿지 로그가 콘솔 검사를 오염 | console/network 버퍼에서 알려진 노이즈 자동 제거 |
+
+### 5-5. 코드 구조
+
+```
+src/
+├── server.ts            # MCP 진입점 — 15개 도구 등록 + dispatch + instructions 주입
+├── instructions.ts      # BROWSER_RULES — 조작/검증 역할 분리 규칙 (세션 시작 시 자동 주입)
+├── tools/               # 도구 핸들러 — MCP 형식에 맞추는 얇은 어댑터
+│   └── checks.ts        #   console/network + NOISE_PATTERNS 필터 (HMR / Fast Refresh 등)
+├── runtime/             # 실제 로직 — Playwright primitive
+│   ├── client.ts        #   connectOverCDP 싱글톤
+│   ├── interaction/     #   safeClick / safeFill (retry + React native setter)
+│   ├── navigation/      #   waitPageStable (networkidle + 애니메이션 종료 대기)
+│   ├── semantic/        #   extractSemanticState — evaluate 1회로 페이지 스냅샷
+│   ├── inspect/         #   runInspect — 배치 관찰
+│   ├── verify/          #   13종 check 타입 + runVerify
+│   │   └── figma/       #     compare(px ±0.5 허용) · normalize(hex→rgb) ·
+│   │                    #     state(hover/focus/active) · transitionGuard(전환 0초) ·
+│   │                    #     tokens(스와치 검증) · coverage(카테고리 가드)
+│   └── tasks/           #   loader / registry / runner (14종 op, {{arg}} 치환)
+├── cdp/                 # actions(clickByText·hydration 감지), wait, eval, 버퍼
+└── lib/                 # result 헬퍼, glob 매칭
+```
+
+tools(어댑터)와 runtime(로직)을 분리한 이유: task runner가 runtime 함수를 직접 재사용할 수 있고, MCP가 아닌 다른 인터페이스로도 노출 가능하다.
+
+의존성은 단 둘: `@modelcontextprotocol/sdk` + `playwright-core`. TypeScript, stdio transport, MIT 라이선스. figma 비교·task 로더에는 node 내장 test runner 기반 유닛 테스트가 있다(`npm test`).
+
+### 5-6. MCP instructions — 규칙을 서버가 직접 주입 (v0.7.0)
+
+"조작은 agent-browser, 검증은 이 MCP" 같은 역할 분리 규칙을 MCP 서버의 `instructions` 필드(`src/instructions.ts`의 `BROWSER_RULES`)로 세션 시작 시 클라이언트에 자동 주입한다. 소비 프로젝트가 CLAUDE.md에 규칙을 복사해둘 필요가 없다 — **플러그인 설치만으로 사용 규약까지 배포**되는 구조.
+
+---
+
+## 6. 다른 도구와 뭐가 다른가 — 비교
+
+### 6-1. 한 문장 요약
+
+> 다른 도구들은 "AI가 화면을 읽고 판단"하거나 "사람이 미리 테스트 코드를 짜두는" 방식이다. browser-verifier는 그 사이 — **AI가 검증 항목을 지정하면, 고정된 코드가 판정**하는 유일한 지점을 차지한다.
+
+### 6-2. AI 브라우저 도구들과 비교 (같은 카테고리)
+
+| 질문 | Playwright MCP | agent-browser | AI가 매번 직접 코딩 | **browser-verifier** |
 |---|---|---|---|---|
-| **AI가 실제로 뭘 하나?** | 페이지 목록(트리) 전체를 받아 AI가 읽고 통과/실패 판단 | 트리·스크린샷을 AI가 읽고 판단 (ref·CLI로 조작) | Playwright 코드를 그때그때 새로 짜고 → 실행 → 결과 해석 | "이 selector의 이 값을 확인해"라고 **지정만**. 확인은 미리 만든 코드가 함 |
-| **확인하는 코드는 누가 만드나?** | 없음 (AI 판단) | 없음 (AI 판단) | AI가 매번 새로 작성하고 버림 | 이미 만들어져 고정. AI가 안 짬 |
-| **"잠깐 기다렸다 확인"은?** | AI가 알아서 (놓치면 flaky) | CLI wait 명령, AI가 판단해 호출 | 코드에 매번 직접 넣어야 함 | 코드가 항상 알아서 기다림 |
-| **같은 검증 두 번 하면 결과 같나?** | AI 판단이라 흔들림 | AI 판단이라 흔들림 | 매번 코드 달라서 **제일 들쑥날쑥** | **항상 같은 결과** |
-| **한 번 돌릴 때 비용** | 트리 전체 읽어 무거움 | 트리·스크린샷 읽어 무거움 (실행은 Rust라 빠름) | 코드 매번 생성해 무거움 | 확인할 값만 봐서 가벼움 |
-| **정확한 값(CSS px·색) 판정?** | △ 트리에 값 거의 없음 | △ 똑같이 눈대중 (트리에 값 없음) | ✅ 가능 (직접 짜야) | ✅ 코드가 정밀 비교 |
-| **브라우저 폭** | Chromium·WebKit·Firefox | Chromium·**Safari·Lightpanda** | (Playwright와 같음) | **Chromium만** (CDP attach) |
-| **다음에 또 쓸 수 있나?** | 안 됨 | 안 됨 (CLI 1회성) | 안 됨 (코드 버림) | 저장해 똑같이 반복 |
-| **어디에 잘 맞나?** | 사이트 탐색 | 탐색·멀티브라우저·Vision 시각확인 | 한 번만 할 특이 조작 | 코드 고친 뒤 **결정적 회귀 검증** |
+| 판정 주체 | AI가 트리 읽고 판단 | AI가 트리·스크린샷 보고 판단 | AI가 짠 코드 + AI 해석 | **고정된 코드가 기계 비교** |
+| 같은 검증 2회 → 같은 결과? | 흔들릴 수 있음 | 흔들릴 수 있음 | 매번 코드가 달라 제일 불안정 | **항상 같음** |
+| 1회 비용 | 트리 통째 → 무거움 | 트리·스크린샷 → 무거움 | 코드 생성 → 무거움 | **필요한 값만 → 가벼움** |
+| CSS px·색 정밀 판정 | △ (트리에 값 없음) | △ (동일) | ✅ (직접 짜야) | ✅ **코드가 정밀 비교** |
+| 대기(타이밍) 처리 | AI가 알아서 (놓치면 flaky) | AI가 판단해 호출 | 매번 직접 넣어야 함 | **코드가 항상 자동** |
+| 검증 재사용 | ✗ | ✗ | ✗ (코드 버려짐) | ✅ **task로 저장·반복** |
+| 브라우저 폭 | Chromium·WebKit·Firefox | Chromium·Safari 등 | Playwright와 동일 | Chromium만 (CDP attach) |
+| 최적 용도 | 사이트 탐색 | 탐색·멀티브라우저·Vision | 1회성 특이 조작 | **코드 수정 후 결정적 회귀 검증** |
 
-> **agent-browser는?** Playwright MCP와 **같은 "AI 판정" 계열**이에요 (트리·스크린샷을 AI가 읽고 판단). 차별점은 **Rust CLI(빠른 실행)·멀티 브라우저(Safari·Lightpanda)·Vision 시각 확인**. 단 **CSS px·색 같은 정밀 값은 접근성 트리에 안 나와서** 똑같이 눈대중이라, *"버튼이 작동하나"* 같은 유무 판단엔 강해도 *"마진이 정확히 16px인가"* 정밀 판단엔 약해요. 그 값을 코드로 정밀 비교하는 건 browser-verifier뿐.
+핵심 구분: Playwright MCP와 agent-browser는 **"AI 판정" 계열**(유연하지만 흔들림), browser-verifier는 **"코드 판정" 계열**(좁지만 결정적). 경쟁이 아니라 역할이 다르다 — 실제로 이 프로젝트는 agent-browser와 **페어로 쓰도록 설계**됐다(조작은 agent-browser, 검증은 본 MCP, 같은 Chrome 9223 공유).
 
-### 한눈에
+### 6-3. 전통 E2E 테스트 (Playwright Test / Cypress)와 비교
 
-- **Playwright MCP · agent-browser** → AI가 *읽기 + 판단*까지 다 함 (트리·스크린샷). 무겁고, 판단이라 흔들림. (agent-browser는 Rust 실행·멀티브라우저·Vision이 강점)
-- **AI 직접 코딩** → AI가 *코드 작성 + 실행 + 판단*까지 다 함. 매번 코드가 달라져서 **제일 불안정**.
-- **browser-verifier** → AI는 *무엇을 볼지*만, 기다림·재시도·합격판정은 **고정된 코드**가 함. 그래서 가볍고, 매번 같은 결과.
+"그냥 E2E 테스트 짜면 되지 않나?"가 가장 많이 나올 질문. 대상 국면이 다르다:
 
-특히 **"AI가 매번 직접 코딩"**의 함정을 콕 집으면:
-- 같은 검증인데 실행할 때마다 코드가 미묘하게 달라짐 → 어제 통과한 게 오늘 깨짐
-- 기다리는 처리를 매번 기억해서 넣어야 함 → 한 번 빼먹으면 flaky
-- 검증 끝나면 코드는 버려짐 → 쌓이지 않음
+| | E2E 테스트 (Playwright Test / Cypress) | browser-verifier |
+|---|---|---|
+| **언제** | 기능 완성 후, CI에서 | **개발 중**, 코드 수정 직후 즉시 |
+| **누가 검증 항목을 정하나** | 사람이 미리 코드로 작성 | AI가 diff를 보고 그 자리에서 도출 |
+| **작성 비용** | 테스트 코드 작성·유지보수 필요 | 자연어 한 마디 ("확인해줘") |
+| **브라우저** | 격리된 새 인스턴스 (로그인 셋업 필요) | **지금 내가 보던 Chrome** (세션 그대로) |
+| **커버 범위** | 미리 짜둔 시나리오만 | 방금 바꾼 부분에 맞춰 동적으로 |
+| **결과 축적** | 테스트 스위트로 축적 | 반복되는 것만 task JSON으로 축적 |
 
-browser-verifier는 이 *"매번 새로 짜는"* 부분을 **이미 검증된 코드로 고정**해두고, AI한테는 *"이 selector의 이 값을 봐"* 정도만 시킴.
+E2E 테스트는 "회귀 안전망"(사후·정적), browser-verifier는 "개발 루프의 즉석 확인"(즉시·동적)이다. 대체가 아니라 **테스트를 짜기 전 단계의 공백**을 메운다. 자주 반복되는 검증이 task로 굳으면 그게 사실상 경량 E2E가 된다.
+
+### 6-4. 시각 회귀 도구 (Percy / Chromatic)와 비교
+
+Percy·Chromatic은 스크린샷 픽셀 diff로 1~2px 시각 회귀를 잡는다. browser-verifier는 의도적으로 그 영역에 들어가지 않는다 — 대신 **의미 있는 값**(computed style, 클래스, 토큰)을 비교한다. "픽셀이 달라졌나"가 아니라 "스펙대로 구현됐나"를 묻는 도구.
 
 ---
+
+## 7. 한계 — 못 하는 것
+
+한계를 솔직하게 알려주는 것도 소개의 일부다:
+
+- **픽셀 퍼펙트 비교 불가** — 1~2px 시각 회귀는 Percy/Chromatic 영역 (의도적 스코프 아웃)
+- **Chromium 전용** — `connectOverCDP` 방식이라 Safari/Firefox 크로스브라우저 검증 불가
+- **일부 휴리스틱이 React 기반** — hydration 감지, controlled input 처리 등. 비-React에서도 동작은 하지만 최적화는 React/Next.js 대상
+- **디자인의 주관적 "느낌"은 판정 불가** — 기계 비교의 본질적 한계
+- **다크모드 자동 매칭 없음** — 모드별 spec을 따로 작성하면 가능
+- **사전 셋업 필요** — Chrome을 디버깅 포트로 띄워야 함 (slash command로 한 줄이지만, 제로 셋업은 아님)
+
+---
+
+## 8. 예상 질문 & 답변
+
+### 8-1. "결정적(deterministic)이라는 게 정확히 무슨 뜻이죠?"
+
+같은 입력에 항상 같은 출력. 이 도구에서는 "같은 화면 상태에 같은 checks를 주면 언제 돌려도 같은 PASS/FAIL"을 뜻한다. LLM 판정은 확률적 생성이라 이 성질이 없다. 이 프로젝트는 판정 로직을 전부 코드로 내려서(glob 매칭, 문자열 비교, classList 검사) 이 성질을 확보했다. 참고로 결정성 ≠ 정확성 — LLM도 정확할 수 있지만 결정적이지 않을 수 있고, 검증에는 둘 다 필요하다.
+
+### 8-2. "왜 새 브라우저를 띄우지 않고 기존 Chrome에 붙나요?"
+
+세 가지 이유. ① 개발자가 보던 페이지·로그인·쿠키 상태를 그대로 검증 — 검증 환경과 실제 환경의 불일치가 없다. ② 검증 사이클마다 로그인 셋업을 반복하지 않아 빠르다. ③ 조작 도구(agent-browser)와 같은 인스턴스를 공유해 조작→검증 간 상태 일관성이 보장된다. 트레이드오프는 Chromium 전용이 된다는 것과 디버깅 포트 기동이라는 사전 셋업.
+
+### 8-3. "flaky를 어떻게 막나요?"
+
+flaky의 주범은 타이밍(렌더 전 검사)과 stale 참조(리렌더로 요소 소멸)다. 각각을 코드 레벨에서 잡는다: `loaded` 폴링(0.15초 간격)·waitPageStable(networkidle + 애니메이션 종료)로 타이밍을, Playwright Locator + tag-and-retry로 stale을, hydration 감지(`__reactFiber*` 키 확인)로 "보이지만 클릭 안 되는" Next.js SSR 특유의 문제를 막는다. 핵심은 이걸 **AI가 기억해서 넣는 게 아니라 런타임에 항상 박혀 있다**는 것 — 빼먹을 수가 없다.
+
+### 8-4. "왜 조작 기능을 제거했나요?" (v0.4.0 결정)
+
+관심사 분리. 조작(탐색·클릭·입력)은 유연함이 중요해서 AI 판단 계열 도구(agent-browser)가 잘하고, 검증은 결정성이 중요해서 코드 판정이 잘한다. 하나의 도구가 둘 다 하려면 어느 쪽 설계 원칙도 지키기 어렵다. 그래서 검증 전용으로 좁히고, 조작은 같은 Chrome을 CDP로 공유하는 agent-browser에 위임했다. 단, 검증 시나리오 안에서 필요한 다단계 조작(로그인 후 검증 등)은 `browser_run_task`의 step으로 표현 가능 — "검증 flow의 일부인 조작"과 "자유 조작"을 구분한 것.
+
+### 8-5. "토큰 절약이 왜 그렇게 중요한가요?"
+
+비용 문제만이 아니다. ① LLM은 context window가 유한해서 화면 트리를 매번 통째로 넣으면 대화의 다른 정보가 밀려난다. ② 컨텍스트가 커질수록 응답이 느려지고 판단 품질도 떨어진다. ③ 자동 검증(Stop hook)처럼 **코드 수정마다** 도는 사이클이라면 1회 비용이 누적된다. semantic_state가 화면을 수백 토큰의 구조화 JSON으로 압축하고, verify가 필요한 값만 반환하는 이유다.
+
+### 8-6. "MCP가 뭐고, 왜 MCP 서버로 만들었나요?"
+
+MCP(Model Context Protocol)는 Anthropic이 2024년 발표한 LLM 도구 호출 표준 — JSON-RPC 기반으로, 도구 제공자가 서버 하나만 만들면 MCP를 지원하는 모든 클라이언트(Claude Code, Claude Desktop 등)에서 쓸 수 있다. 이 프로젝트를 MCP 서버로 만든 덕에 LLM이 도구 이름·설명·스키마만 보고 스스로 어떤 검증 도구를 어떤 순서로 쓸지 결정한다. 특정 에이전트 구현에 종속되지 않는다.
+
+### 8-7. "그냥 Playwright 테스트를 짜는 것과 뭐가 다른가요?"
+
+국면이 다르다. Playwright 테스트는 사람이 미리 시나리오를 코드로 짜서 CI에서 돌리는 **사후 안전망**이고, 이 도구는 코드를 고친 **그 순간** AI가 diff에 맞는 검증 항목을 즉석에서 도출해 돌리는 **개발 루프 도구**다. 테스트 코드를 안 짜도 되고, 방금 바꾼 부분에 맞춰 검증이 동적으로 구성된다. 반복되는 검증은 task JSON으로 굳혀서 사실상 경량 E2E로 축적할 수도 있다. 대체가 아니라 보완 관계.
+
+### 8-8. "AI가 checks를 잘못 지정하면요? 결국 AI 의존 아닌가요?"
+
+맞다, WHAT의 품질은 여전히 AI 책임이다. 다만 실패 모드가 다르다. AI 판정 방식은 "검증했다고 하는데 실제로 안 봤거나 잘못 봤을" 수 있고 그걸 알 방법이 없다. 이 도구는 무엇을 검사했고 expected/observed가 무엇이었는지가 **구조화된 기록으로 남는다** — 검증 항목이 부족하면 눈에 보이고, 사람이 checks를 리뷰·보강할 수 있다. "판단을 없앤" 게 아니라 "판단을 검증 가능하게 만든" 것. 또한 skill이 diff 카테고리→검증 항목 매핑 규칙을 제공해 AI의 항목 선정 자체도 패턴화돼 있다.
+
+### 8-9. "자동 검증은 어떻게 무한루프에 안 빠지나요?"
+
+Stop hook은 Claude가 응답을 끝낼 때마다 불리므로, 검증 응답이 또 검증을 트리거하면 무한루프다. 두 겹으로 막는다: ① git diff(+ untracked)의 sha256 해시를 계산해 직전 검증 마커(`.claude/.last-verified-hash`)와 같으면 무동작 — 코드가 안 바뀌었으면 재검증 안 함. ② 검증 사이클의 마지막 도구 `browser_sentinel_save`가 그 마커를 갱신 — PASS든 에스컬레이션이든 저장해서 같은 diff로는 다시 안 돈다. 코드를 다시 고치면 해시가 바뀌어 자연히 재검증된다.
+
+### 8-10. "figma_spec에서 hover 색 검증이 왜 어렵고, 어떻게 풀었나요?"
+
+두 가지 함정이 있다. ① hover는 CSS 가상 상태라 JS로 클래스만 넣어서는 실제와 다를 수 있음 → Playwright 네이티브 마우스 입력으로 **진짜 hover를 발동**시켜 measured. ② transition이 걸려 있으면 측정 시점에 전환 **중간색**이 읽힘 → 측정 직전 해당 요소의 transition/animation을 0초로 강제해 최종값만 읽는다. 추가로 Tailwind v4가 OKLCH 색공간을 쓰는 것, hex vs rgb 표기 차이 같은 정규화 문제도 비교 레이어에서 흡수한다.
+
+### 8-11. "raw CDP로 직접 만들지 왜 Playwright를 얹었나요?"
+
+실제로 초기 버전은 `chrome-remote-interface`로 raw CDP를 썼고, 리팩터(phase 1~2)에서 Playwright로 옮겼다. raw CDP는 요소 참조가 "그 순간의 objectId"라 React 리렌더 한 번이면 stale이 되고, 대기·재시도를 전부 손으로 짜야 한다. Playwright의 Locator(조건 기반 참조, 사용 시점 재탐색)와 actionability 자동 대기가 결정성 확보 비용을 크게 줄였다. 대신 무거운 `playwright` 대신 브라우저 바이너리 없는 `playwright-core`만 의존해 설치를 가볍게 유지했다.
+
+### 8-12. "실제로 겪은 까다로운 버그가 있다면?" (실전 트러블슈팅)
+
+세 가지가 대표적 (모두 실제 커밋으로 남아 있음):
+
+- **macOS에서 CDP 연결이 간헐적으로 실패** — Node 17+가 `localhost`를 IPv6(`::1`)로 먼저 resolve하는데, Chrome CDP는 IPv4(`127.0.0.1`)로만 LISTEN한다. 서버 최상단에서 `dns.setDefaultResultOrder("ipv4first")`로 해결 (`src/server.ts:5`).
+- **tsx dev 모드에서만 `page.evaluate`가 깨짐** — tsx(esbuild)가 함수를 직렬화할 때 `__name` 헬퍼 호출을 끼워 넣는데, 그 함수가 브라우저 컨텍스트에는 존재하지 않아 런타임 에러. 브라우저에 주입하는 스크립트에 `__name` polyfill을 선행시켜 해결. "코드를 문자열로 다른 런타임에 보내는" 구조 특유의 함정.
+- **값은 맞는데 FAIL 나는 false-fail** — Tailwind v4는 색을 OKLCH로 정의하고, 브라우저는 computed 값을 `rgb()`로 돌려주며, Figma는 hex로 준다. 표기가 3개라 순진하게 문자열 비교하면 다 틀린다. 비교 전 정규화 레이어(hex→rgb 변환, px ±0.5 허용, fontFamily 표기 통일)를 두어 해결 (`src/runtime/verify/figma/normalize.ts`, `compare.ts`).
+
+### 8-13. "이 도구의 가장 큰 리스크 혹은 개선하고 싶은 점은?"
+
+① semantic state 추출이 modal·CTA 같은 휴리스틱에 의존 — 특이한 마크업에서는 빗나갈 수 있어, 프로젝트별 커스텀 추출 규칙이 다음 과제. ② React 특화 휴리스틱의 일반화. ③ task JSON이 쌓였을 때의 관리(네이밍·중복·버전) 스토리. ④ 검증 커버리지를 정량화해 "무엇이 검증 안 됐는지"를 보여주는 리포트.
+
+---
+
+## 부록 — 더 깊이 볼 문서
+
+| 문서 | 내용 |
+|---|---|
+| [`docs/쉽게-이해하기.md`](./docs/쉽게-이해하기.md) | 가장 쉬운 비유(채점) 중심 입문 |
+| [`docs/이-MCP-소개.md`](./docs/이-MCP-소개.md) | 왜/누구/무엇 전체 개요 |
+| [`docs/browser_verify-내부동작.md`](./docs/browser_verify-내부동작.md) | verify 4단계를 코드와 함께 |
+| [`docs/concepts.md`](./docs/concepts.md) | LLM·CDP·MCP 기초 개념 + 용어 사전 |
+| [`docs/refactor-phase-1~9.md`](./docs/refactor-phase-1.md) | raw CDP → Playwright → task → plugin 진화 기록 |
+| [`skills/verify/SKILL.md`](./skills/verify/SKILL.md) | 검증 전략 (5 rules, Tier, Skip gate) |
+
+---
+---
+
+# 실무 가이드 — 설치 · 셋업 · 레퍼런스
 
 ## 사전 요구사항
 
