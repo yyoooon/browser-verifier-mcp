@@ -54,10 +54,23 @@ export const definition: Tool = {
   },
 };
 
-export async function handler(args: { targets: InspectInput }) {
+export async function handler(args: { targets?: unknown }) {
+  const { targets } = args;
+  if (
+    typeof targets !== "object" ||
+    targets === null ||
+    Array.isArray(targets)
+  ) {
+    const got = Array.isArray(targets) ? "an array" : typeof targets;
+    return fail(
+      `browser_inspect requires 'targets' to be an object keyed by label, ` +
+        `e.g. { title: { selector: "h1", style: ["color"] } }. Got ${got}. ` +
+        `Do not pass an array or a JSON string.`,
+    );
+  }
   try {
     const state = await ensureAttached();
-    const result = await runInspect(state.page, args.targets);
+    const result = await runInspect(state.page, targets as InspectInput);
     return ok(result);
   } catch (e) {
     return fail(e instanceof Error ? e.message : String(e));

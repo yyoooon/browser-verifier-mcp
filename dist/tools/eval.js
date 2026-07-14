@@ -19,6 +19,12 @@ export const definition = {
     },
 };
 export async function handler(args) {
+    if (typeof args.script !== "string" || args.script.trim() === "") {
+        const hint = "expression" in args
+            ? " Got 'expression' — did you mean 'script'?"
+            : "";
+        return fail(`browser_eval requires a non-empty 'script' string, got ${typeof args.script}.${hint}`);
+    }
     const r = await evalInBrowser(args.script, args.timeoutMs);
     if (!r.ok)
         return fail(r.error, { elapsedMs: r.elapsedMs });

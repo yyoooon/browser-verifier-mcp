@@ -23,7 +23,18 @@ export const definition: Tool = {
   },
 };
 
-export async function handler(args: { script: string; timeoutMs?: number }) {
+export async function handler(
+  args: { script?: unknown; timeoutMs?: number } & Record<string, unknown>,
+) {
+  if (typeof args.script !== "string" || args.script.trim() === "") {
+    const hint =
+      "expression" in args
+        ? " Got 'expression' — did you mean 'script'?"
+        : "";
+    return fail(
+      `browser_eval requires a non-empty 'script' string, got ${typeof args.script}.${hint}`,
+    );
+  }
   const r = await evalInBrowser(args.script, args.timeoutMs);
   if (!r.ok) return fail(r.error, { elapsedMs: r.elapsedMs });
   return ok({ ok: true, value: r.value, elapsedMs: r.elapsedMs });
