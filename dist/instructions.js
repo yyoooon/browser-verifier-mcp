@@ -34,14 +34,17 @@ Prefer \`browser_run_task\` over ad-hoc steps for repeated validation workflows.
 
 ## Shared Browser
 
-Both tools must point at the same Chrome instance. Dev Chrome defaults to \`127.0.0.1:9223\`:
+Both tools must point at the same CDP Chrome (default \`127.0.0.1:9223\`; override with \`BROWSER_VERIFIER_CDP_URL\`):
 
-- \`agent-browser\` → call with \`--cdp 9223\` (or set \`AGENT_BROWSER_AUTO_CONNECT=1\`)
-- \`browser-verifier\` → defaults to \`9223\`. For a non-default port, set \`BROWSER_VERIFIER_CDP_URL=http://127.0.0.1:<port>\`
+- \`agent-browser\` (operations) → attach with the plugin wrapper, NOT a bare \`--cdp\`:
+  \`bash "\${CLAUDE_PLUGIN_ROOT}/scripts/agent-browser-attach.sh" <devPort> [cdpPort]\`, then drive with \`agent-browser --session browser-verifier <cmd>\`.
+- \`browser-verifier\` (verification) → \`browser_setup({ port: <devPort>, cdpPort })\`; cdpPort defaults to 9223.
+
+Why the wrapper (do NOT call \`agent-browser --cdp <port>\` directly): agent-browser reuses one shared \`default\` session — once it binds to a stray/spawned Chrome, later \`--cdp <port>\` is ignored and it drives the wrong browser. \`--cdp\` also targets the instance, not a tab (several app tabs in one CDP Chrome → wrong tab). The wrapper isolates a dedicated session and selects the tab by dev-server port. If agent-browser opens a new window instead of attaching → stale session; just re-run the wrapper (it scope-resets only its own session).
 
 If Chrome is not running:
 \`\`\`
-/browser-verifier:launch-chrome 9223
+/browser-verifier:launch-chrome <port>
 \`\`\`
 
 ## Anti-patterns

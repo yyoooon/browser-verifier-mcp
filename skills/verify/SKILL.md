@@ -11,12 +11,18 @@ Deterministic verification on top of Chrome 9223 via Playwright `connectOverCDP`
 
 ## 페어링 (조작은 agent-browser, 검증은 본 MCP)
 
-본 MCP는 **검증 전용**. 조작(click/fill/navigate)은 `agent-browser`에 위임하는 게 권장 워크플로.
+본 MCP는 **검증 전용**. 조작(click/fill/navigate)은 `agent-browser`에 위임하는 게 권장 워크플로. 검증·조작 모두 **같은 CDP Chrome**(기본 :9223, `$BROWSER_VERIFIER_CDP_URL`로 변경)을 공유한다.
 
-- 같은 Chrome 인스턴스를 **CDP 9223**으로 공유 (`agent-browser --cdp 9223 ...` / `browser_setup({ cdpPort: 9223 })`).
+- **조작 붙이기(권장)**: `bash "${CLAUDE_PLUGIN_ROOT}/scripts/agent-browser-attach.sh" <devPort> [cdpPort]` → 이후 조작은 `agent-browser --session browser-verifier <cmd>`.
+- **검증 붙이기**: `browser_setup({ port: <devPort>, cdpPort })` (cdpPort 생략 시 기본 :9223).
 - 첫 셋업: `/browser-verifier:setup-paired-browser` (인터랙티브 가이드).
 - Chrome 띄우기만: `/browser-verifier:launch-chrome [port]` — idempotent.
 - 세션 시작 시 Chrome 안 떠있으면 SessionStart hook이 자동 안내.
+
+> ⚠️ **`agent-browser --cdp <port>`를 직접 부르지 말고 래퍼를 쓸 것.** 이유 2가지:
+> 1. agent-browser는 공용 `default` 세션을 재사용한다. 세션이 한 번 다른(스폰된) 크롬에 묶이면 이후 `--cdp <port>`가 **무시**되고 새 크롬을 띄운다 → 검증 대상과 다른 브라우저를 조작하게 됨.
+> 2. `--cdp`는 크롬 **인스턴스**만 지정하고 **탭**은 못 고른다. 한 CDP Chrome에 여러 앱 탭(3001/3002/3003)이 있으면 엉뚱한 탭을 잡는다.
+> 래퍼는 **전용 세션 격리 + 개발포트로 정확한 탭 선택**을 한 번에 한다. 그래도 새 창이 뜨면 = stale 세션 → 래퍼 재실행(내부에서 그 세션만 스코프 리셋; 공유 크롬·default 세션은 안 건드림).
 
 ## The 5 Rules (memorize)
 

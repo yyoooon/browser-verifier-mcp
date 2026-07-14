@@ -104,6 +104,6 @@ dev server 포트를 사용자가 안 알려줬으니 인자 생략 (auto-detect
 | MCP 연결 | ✓ 성공 또는 ⚠️ dev server 안 떠있음 |
 
 마지막 줄에 다음 안내:
-- `MODE = A`: "이제 'agent-browser --cdp {{PORT}} open <url>' 후 browser_verify로 검증하세요."
+- `MODE = A`: "이 Chrome에서 앱 페이지(예: http://localhost:<devPort>)를 연 뒤, `bash \"${CLAUDE_PLUGIN_ROOT}/scripts/agent-browser-attach.sh\" <devPort> {{PORT}}` 로 붙이고 → 조작은 `agent-browser --session browser-verifier <cmd>`, 검증은 browser_verify. (bare `agent-browser --cdp` 직접 호출 금지 — stale 세션·탭 오지정 위험)"
 - `MODE = B`: "Chrome 창에서 직접 페이지 띄우고 browser_verify로 검증하세요."
 - `MODE = C`: "`.browser-verifier/tasks.json` 정의 후 browser_run_task 호출."
