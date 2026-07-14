@@ -59,7 +59,7 @@ browser-verifier MCP는 다른 MCP를 직접 호출하지 않는다. **메인 �
 3. **모든 `VISUAL_PROPERTY_SET` 키를 채운다** — 안 바뀌는 것도 명시.
 4. **토큰 바인딩 기록** — Figma 변수에 바인딩된 속성은 `tokens: [{ "class", "prop" }]`로 기록(raw 값·바인딩 없는 건 제외). 색 토큰이면 swatch 검증(§4-B)까지 걸림.
 5. **완전성 자가검사 (저장 전 필수).** 각 target이 `VISUAL_PROPERTY_SET`(skipCategories 제외)를 **전부** 채웠는지 확인. 하나라도 빠지면 **저장하지 말고 누락 목록과 함께 보고**. "안 바뀌니 생략" 다시 금지.
-6. **`strict: true` 세팅** 후 `<repo>/.figma-specs/<name>.figma-spec.json` 저장. → 이후 MCP가 `[spec-completeness]`로 강제(누락 시 fail).
+6. **`strict: true` 세팅** 후 `<repo>/.browser-verifier/<branch-slug>/figma-specs/<name>.json` 저장. → 이후 MCP가 `[spec-completeness]`로 강제(누락 시 fail). 저장 위치·수명(브랜치 삭제 시 자동 청소)·커밋 안 함 규약은 `references/verification-scratch.md` 참고.
 
 ### 스펙 예시 (state별 = 같은 selector 반복)
 ```json
@@ -184,7 +184,7 @@ theme 토큰(`bg-blue-100`)은 `oklch(...)`로 컴파일 → Figma hex로 직접
 ```
 [사용자] Figma 링크 + "구현 후 검증"
    ↓
-[메인 세션] Figma MCP로 전 속성 추출 → 완전성 자가검사 → strict:true 스펙 저장(.figma-specs/<name>.json)
+[메인 세션] Figma MCP로 전 속성 추출 → 완전성 자가검사 → strict:true 스펙 저장(.browser-verifier/<branch>/figma-specs/<name>.json, gitignored)
 [메인 세션] 코드 구현
 [메인 세션] browser_verify({ checks: [loaded, no_errors, figma_spec(<path>)] })
    ↓

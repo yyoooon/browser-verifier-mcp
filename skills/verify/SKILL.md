@@ -27,7 +27,7 @@ Deterministic verification on top of Chrome 9223 via Playwright `connectOverCDP`
 ## The 5 Rules (memorize)
 
 1. **`browser_setup` FIRST** — once per cycle. PORT auto-detect (`.env.local` / lsof). Skip → 다른 도구 모두 fail.
-2. **Repeated flows = tasks; one-off = primitives** — `.browser-verifier/tasks.json`에 등록 후 `browser_run_task({name})`. 1회성은 `browser_verify` 또는 `run_task({steps})` 인라인. 새 task 작성 패턴 → `references/task-workflow.md`.
+2. **Repeated flows = tasks; one-off = primitives** — `.browser-verifier/<branch-slug>/tasks.json`에 등록 후 `browser_run_task({name})`. 1회성은 `browser_verify` 또는 `run_task({steps})` 인라인. 새 task 작성 패턴 → `references/task-workflow.md`. **저장 위치·수명(브랜치 스코프, gitignored, 커밋 X, 브랜치 삭제 시 자동 청소)·요구사항→checklist 규약 → `references/verification-scratch.md`.**
 3. **`browser_verify` > 여러 `browser_eval`** — assertion은 verify 한 콜로. eval은 verify로 표현 불가능한 ad-hoc에만.
 4. **`browser_check_console` 자동 노이즈 필터** (HMR / Bridge / 다른 워크트리 포트 제거). 사용자가 명시적으로 요청할 때만 실행.
 5. **`browser_sentinel_save`로 마무리** — PASS / wiring-only SKIP / ESCALATION 후 항상. (ESCALATION도 저장 — 사용자에게 이미 보고했으므로 같은 diff로 Stop hook이 재트리거되면 안 됨. 코드를 다시 고치면 hash가 바뀌어 자연히 재검증됨.)
@@ -167,3 +167,4 @@ Dev 서버 미기동 / Chrome 9223 미기동 / 보호 라우트 / Diff > 300줄 
 - `references/token-check.md` — classList → computed rgba 폴백
 - `references/figma-tailwind-check.md` — Figma → Tailwind 결정적 검증 (computed_style / class_present + OKLCH 함정)
 - `references/figma-spec-workflow.md` — `figma_spec` check 한 줄로 typography + style + hover/focus/active 일괄 검증
+- `references/verification-scratch.md` — 검증 자산(스펙·task·checklist) 저장 위치(`.browser-verifier/<branch>/`)·수명(브랜치 스코프)·요구사항→checklist·로컬 vs E2E 3층 판단

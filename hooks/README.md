@@ -5,6 +5,7 @@ Plugin 설치 시 자동 등록되는 2종:
 | 스크립트 | 이벤트 | 기본 동작 |
 |---|---|---|
 | `session-start-chrome-check.sh` | `SessionStart` | dev Chrome CDP 떠있는지 진단. 떠있으면 침묵, 없으면 한 줄 안내 (always-on, opt-out 가능) |
+| `session-start-verify-sweep.sh` | `SessionStart` | `.browser-verifier/`를 `.gitignore`에 자동 추가 + 삭제된 브랜치의 scratch 폴더(`<branch-slug>/`) 청소. `.browser-verifier/` 있을 때만 동작, `_shared/` 제외 (opt-out 가능) |
 | `browser-verify-gate.sh` | `Stop` | 자동 검증 트리거 (opt-in: `$HOME/.browser-verifier-auto`) |
 
 ## SessionStart — Chrome CDP 진단 (always-on)
